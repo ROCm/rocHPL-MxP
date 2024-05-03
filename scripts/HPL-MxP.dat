@@ -1,0 +1,14 @@
+HPLinpack benchmark input file
+Innovative Computing Laboratory, University of Tennessee
+HPL-MxP.out  output file name (if any)
+0            device out (6=stdout,7=stderr,file)
+1            # of problems sizes (N)
+61440        Ns
+1            # of NBs
+2560         NBs
+1            PMAP process mapping (0=Row-,1=Column-major)
+1            P
+1            Q
+16.0         threshold
+1            # of broadcast
+0            BCASTs (0=1rg,1=1rM,2=2rg,3=2rM,4=Lng,5=LnM)

@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# Author: Noel Chalmers
+
+# set -x #echo on
+
+# #################################################
+# helper functions
+# #################################################
+function display_help()
+{
+  echo "rocHPL-MxP run helper script"
+  echo "./run_rochplmxp "
+  echo "    [-P]    Specific MPI grid size: the number of         "
+  echo "            rows in MPI grid.                             "
+  echo "    [-Q]    Specific MPI grid size: the number of         "
+  echo "            columns in MPI grid.                          "
+  echo "    [-p]    Specific node-local MPI grid size: the number "
+  echo "            of rows in node-local MPI grid. Must evenly   "
+  echo "            divide P.                                     "
+  echo "    [-q]    Specific node-local MPI grid size: the number "
+  echo "            of columns in node-local MPI grid. Must evenly"
+  echo "            divide Q.                                     "
+  echo "    [-N]    Specific matrix size: the number of           "
+  echo "            rows/columns in global matrix.                "
+  echo "    [--NB]  Specific panel size: the number of            "
+  echo "            rows/columns in panels.                       "
+  echo "    [-i]    Input file. When set, all other commnand      "
+  echo "            line parameters are ignored, and problem      "
+  echo "            parameters are read from input file.          "
+  echo "    [-h|--help] prints this help message                  "
+  echo "    [--version] Print rocHPL-MxP version number.          "
+}
+
+# This function is helpful for dockerfiles that do not have sudo installed, but the default user is root
+# true is a system command that completes successfully, function returns success
+# prereq: ${ID} must be defined before calling
+supported_distro( )
+{
+  if [ -z ${ID+foo} ]; then
+    printf "supported_distro(): \$ID must be set\n"
+    exit 2
+  fi
+
+  case "${ID}" in
+    ubuntu|centos|rhel|fedora|sles)
+        true
+        ;;
+    *)  printf "This script is currently supported on Ubuntu, CentOS, RHEL, Fedora and SLES\n"
+        exit 2
+        ;;
+  esac
+}
+
+# #################################################
+# Pre-requisites check
+# #################################################
+# Exit code 0: alls well
+# Exit code 1: problems with getopt
+# Exit code 2: problems with supported platforms
+
+# check if getopt command is installed
+type getopt > /dev/null
+if [[ $? -ne 0 ]]; then
+  echo "This script uses getopt to parse arguments; try installing the util-linux package";
+  exit 1
+fi
+
+# os-release file describes the system
+if [[ -e "/etc/os-release" ]]; then
+  source /etc/os-release
+else
+  echo "This script depends on the /etc/os-release file"
+  exit 2
+fi
+
+# The following function exits script if an unsupported distro is detected
+supported_distro
+
+# #################################################
+# global variables
+# #################################################
+# Grab options from CMake config
+rochplmxp_bin=@CMAKE_INSTALL_PREFIX@/bin/rochplmxp
+rocm_dir=@ROCM_PATH@
+rocblas_dir=@ROCBLAS_LIB_PATH@
+
+P=1
+Q=1
+p=-1
+q=-1
+N=61440
+NB=2560
+
+filename=HPL-MxP.dat
+inputfile=false
+cmdrun=false
+
+export LD_LIBRARY_PATH=${rocblas_dir}:${blas_dir}:${rocm_dir}/lib:$LD_LIBRARY_PATH
+
+# #################################################
+# Parameter parsing
+# #################################################
+
+# check if we have a modern version of getopt that can handle whitespace and long parameters
+getopt -T
+if [[ $? -eq 4 ]]; then
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,help,version, --options hP:Q:p:q:N:i: -- "$@")
+else
+  echo "Need a new version of getopt"
+  exit 1
+fi
+
+if [[ $? -ne 0 ]]; then
+  echo "getopt invocation failed; could not parse the command line";
+  exit 1
+fi
+
+eval set -- "${GETOPT_PARSE}"
+
+while true; do
+  case "${1}" in
+    -h|--help)
+        display_help
+        exit 0
+        ;;
+    --version)
+        ${rochplmxp_bin} --version
+        exit 0
+        ;;
+    -P)
+        P=${2}
+        shift 2 ;;
+    -Q)
+        Q=${2}
+        shift 2 ;;
+    -p)
+        p=${2}
+        shift 2 ;;
+    -q)
+        q=${2}
+        shift 2 ;;
+    -N)
+        N=${2}
+        cmdrun=true
+        shift 2 ;;
+    --NB)
+        NB=${2}
+        cmdrun=true
+        shift 2 ;;
+    -i)
+        filename=${2}
+        inputfile=true
+        shift 2 ;;
+    --) shift ; break ;;
+    *)  echo "Unexpected command line parameter received; aborting";
+        exit 1
+        ;;
+  esac
+done
+
+#if nothing but np and n parameters where given, default to running
+# with default input file
+if [[ "${inputfile}" == false && "${cmdrun}" == false ]]; then
+  inputfile=true
+fi
+
+np=$(($P*$Q))
+if [[ "$np" -lt 1 ]]; then
+  echo "Invalid MPI grid parameters; aborting";
+  exit 1
+fi
+
+# Get local process numbering
+set +u
+if [[ -n ${OMPI_COMM_WORLD_LOCAL_RANK+x} ]]; then
+  globalRank=$OMPI_COMM_WORLD_RANK
+  globalSize=$OMPI_COMM_WORLD_SIZE
+  rank=$OMPI_COMM_WORLD_LOCAL_RANK
+  size=$OMPI_COMM_WORLD_LOCAL_SIZE
+elif [[ -n ${SLURM_LOCALID+x} ]]; then
+  globalRank=$SLURM_PROCID
+  globalSize=$SLURM_NTASKS
+  rank=$SLURM_LOCALID
+  size=$SLURM_TASKS_PER_NODE
+  #Slurm can return a string like "2(x2),1". Get the first number
+  size=$(echo $size | sed -r 's/^([^.]+).*$/\1/; s/^[^0-9]*([0-9]+).*$/\1/')
+fi
+set -u
+
+#Determing node-local grid size
+if [[ "$p" -lt 1 && "$q" -lt 1 ]]; then
+  # no node-local grid was specified, pick defaults
+  q=$(( (Q<=size) ? Q : size))
+
+  if [[ $((size % q)) -gt 0 ]]; then
+    echo "Invalid MPI grid parameters; Unable to form node-local grid; aborting";
+    exit 1
+  fi
+
+  p=$(( size/q ))
+
+elif [[ "$p" -lt 1 ]]; then
+  #q was specified
+
+  if [[ $((size % q)) -gt 0 ]]; then
+    echo "Invalid MPI grid parameters; Unable to form node-local grid; aborting";
+    exit 1
+  fi
+
+  p=$(( size/q ))
+
+elif [[ "$q" -lt 1 ]]; then
+  #p was specified
+
+  if [[ $((size % p)) -gt 0 ]]; then
+    echo "Invalid MPI grid parameters; Unable to form node-local grid; aborting";
+    exit 1
+  fi
+
+  q=$(( size/p ))
+
+else
+  #Both p and q were specified
+  if [[ $size -ne $((p*q)) ]]; then
+    echo "Invalid MPI grid parameters; Unable to form node-local grid; aborting";
+    exit 1
+  fi
+fi
+
+# Check that the columns are evenly divided among nodes
+if [[ $((P % p)) -gt 0 ]]; then
+  echo "Invalid MPI grid parameters; Must have the same number of P rows on every node; aborting";
+  exit 1
+fi
+
+# Check that the rows are evenly divided among nodes
+if [[ $((Q % q)) -gt 0 ]]; then
+  echo "Invalid MPI grid parameters; Must have the same number of Q columns on every node; aborting";
+  exit 1
+fi
+
+mygpu=$((rank))
+
+# export HIP_VISIBLE_DEVICES=$mygpu
+
+rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q}"
+if [[ "${inputfile}" == true ]]; then
+  rochplmxp_args+=" -i ${filename}"
+else
+  rochplmxp_args+=" -N ${N} -NB ${NB}"
+fi
+
+#run
+${rochplmxp_bin} ${rochplmxp_args}

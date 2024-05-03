@@ -1,0 +1,24 @@
+/* ---------------------------------------------------------------------
+ * -- High Performance Computing Linpack Benchmark (HPL)
+ *    Noel Chalmers
+ *    (C) 2018-2022 Advanced Micro Devices, Inc.
+ *    See the rocHPL/LICENCE file for details.
+ *
+ *    SPDX-License-Identifier: (BSD-3-Clause)
+ * ---------------------------------------------------------------------
+ */
+
+#ifndef HPLMXP_VERSION_HPP
+#define HPLMXP_VERSION_HPP
+
+// clang-format off
+#define __ROCHPLMXP_VER_MAJOR     @rochplmxp_VERSION_MAJOR@
+#define __ROCHPLMXP_VER_MINOR     @rochplmxp_VERSION_MINOR@
+#define __ROCHPLMXP_VER_PATCH     @rochplmxp_VERSION_PATCH@
+#define __ROCHPLMXP_VER_TWEAK     @rochplmxp_VERSION_TWEAK@
+// clang-format on
+
+#define __ROCHPLMXP_VER \
+  10000 * __ROCHPLMXP_VER_MAJOR + 100 * __ROCHPLMXP_VER_MINOR + __ROCHPLMXP_VER_PATCH
+
+#endif // VERSION_HPP
