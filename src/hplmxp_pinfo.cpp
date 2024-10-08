@@ -32,7 +32,8 @@ void HPLMXP_pinfo(int             ARGC,
                   int*            p,
                   int*            q,
                   int*            NTPS,
-                  HPLMXP_T_TOP*   TP) {
+                  HPLMXP_T_TOP*   TP,
+                  int*            ITS) {
   /*
    * Purpose
    * =======
@@ -101,6 +102,10 @@ void HPLMXP_pinfo(int             ARGC,
    *         the  first NTPS  entries of this  array  contain  the various
    *         broadcast (along rows) topologies to run the code with.
    *
+   * ITS     (global output)               int *
+   *         On exit,  ITS  specifies the number of iterations of each
+   *         problem to run.
+   *
    * ---------------------------------------------------------------------
    */
 
@@ -124,6 +129,7 @@ void HPLMXP_pinfo(int             ARGC,
   // parse settings
   int  _P = 1, _Q = 1, n = 61440, nb = 2560;
   int  _p = -1, _q = -1;
+  int  _it = 1;
   bool cmdlinerun = false;
   bool inputfile  = false;
 
@@ -150,6 +156,8 @@ void HPLMXP_pinfo(int             ARGC,
                "-NB [ --sizeNB ] arg (=2560)        Specific panel size: "
                "the number of rows    \n"
                "                                   /columns in panels.   "
+               "-it arg (=1)                        Number of times to "
+               "run each problem    \n"
                "-i  [ --input ]  arg (=HPL-MxP.dat) Input file. When set, "
                "all other commnand   \n"
                "                                    line parameters are "
@@ -244,6 +252,19 @@ void HPLMXP_pinfo(int             ARGC,
         exit(1);
       }
     }
+    if(strcmp(ARGV[i], "-it") == 0) {
+      _it = atoi(ARGV[i + 1]);
+      i++;
+      if(_it < 1) {
+        if(rank == 0)
+          HPLMXP_pwarn(stderr,
+                       __LINE__,
+                       "HPLMXP_pinfo",
+                       "Invalid number of iterations. Exiting ...");
+        MPI_Finalize();
+        exit(1);
+      }
+    }
     if(strcmp(ARGV[i], "-i") == 0 || strcmp(ARGV[i], "--input") == 0) {
       inputFileName = ARGV[i + 1];
       inputfile     = true;
@@ -334,6 +355,8 @@ void HPLMXP_pinfo(int             ARGC,
    */
   *p = _p;
   *q = _q;
+
+  *ITS = _it;
 
   if(inputfile == false && cmdlinerun == true) {
     // We were given run paramters via the cmd line so skip

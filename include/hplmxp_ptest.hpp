@@ -88,7 +88,8 @@ void HPLMXP_pinfo(int             ARGC,
                   int*            p,
                   int*            q,
                   int*            NTPS,
-                  HPLMXP_T_TOP*   TP);
+                  HPLMXP_T_TOP*   TP,
+                  int*            ITS);
 
 void HPLMXP_ptest(HPLMXP_T_test& test,
                   HPLMXP_T_grid& grid,

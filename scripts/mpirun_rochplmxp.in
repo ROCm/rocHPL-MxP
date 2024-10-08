@@ -24,6 +24,8 @@ function display_help()
   echo "            rows/columns in global matrix.                "
   echo "    [--NB]  Specific panel size: the number of            "
   echo "            rows/columns in panels.                       "
+  echo "    [--it]  Iterations: the number of times to run each   "
+  echo "            problem size.                                 "
   echo "    [-i]    Input file. When set, all other commnand      "
   echo "            line parameters are ignored, and problem      "
   echo "            parameters are read from input file.          "
@@ -90,6 +92,7 @@ p=-1
 q=-1
 N=61440
 NB=2560
+it=1
 
 filename=HPL-MxP.dat
 inputfile=false
@@ -121,7 +124,7 @@ fi
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,help,version, --options hP:Q:p:q:N:i: -- "$@")
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,it:,help,version, --options hP:Q:p:q:N:i: -- "$@")
 else
   echo "Need a new version of getopt"
   exit 1
@@ -164,6 +167,9 @@ while true; do
         NB=${2}
         cmdrun=true
         shift 2 ;;
+    --it)
+        it=${2}
+        shift 2 ;;
     -i)
         filename=${2}
         inputfile=true
@@ -188,9 +194,9 @@ if [[ "$np" -lt 1 ]]; then
 fi
 
 if [[ "${inputfile}" == true ]]; then
-  rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -i ${filename}"
+  rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -i ${filename} --it ${it}"
 else
-  rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -N ${N} --NB ${NB}"
+  rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -N ${N} --NB ${NB} --it ${it}"
 fi
 
 #run

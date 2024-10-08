@@ -36,7 +36,7 @@ int main(int ARGC, char** ARGV) {
   HPLMXP_T_palg algo;
   HPLMXP_T_test test;
 
-  int            P, Q, p, q, ns, nbs, ntps, rank, size;
+  int            P, Q, p, q, ns, nbs, ntps, rank, size, its;
   HPLMXP_T_ORDER pmapping;
 
   MPI_Init(&ARGC, &ARGV);
@@ -74,7 +74,8 @@ int main(int ARGC, char** ARGV) {
                &p,
                &q,
                &ntps,
-               topval);
+               topval,
+               &its);
 
   HPLMXP_grid_init(MPI_COMM_WORLD, pmapping, P, Q, p, q, grid);
 
@@ -95,6 +96,7 @@ int main(int ARGC, char** ARGV) {
         algo.btopo = topval[itop];
         algo.epsil = test.epsil;
         algo.thrsh = test.thrsh;
+        algo.its   = its;
 
         int n  = nval[in];
         int nb = nbval[inb];

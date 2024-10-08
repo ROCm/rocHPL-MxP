@@ -32,6 +32,7 @@ typedef struct HPLMXP_S_palg {
   HPLMXP_T_TOP btopo; /* row broadcast topology */
   fp64_t       epsil; /* epsilon machine */
   fp64_t       thrsh; /* threshold */
+  int          its;   /* iterations */
 } HPLMXP_T_palg;
 
 template <typename T>

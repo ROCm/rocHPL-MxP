@@ -129,182 +129,187 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
   /* warm up the GPU to make sure library workspaces are allocated */
   HPLMXP_Warmup(grid, algo, A, LU);
 
-  /* Generate problem */
-  HPLMXP_prandmat(grid, LU);
-  HPLMXP_prandmat_rhs(grid, A);
-  HPLMXP_prandmat_x(grid, A);
-  HIP_CHECK(hipDeviceSynchronize());
+  for (int it=0;it<algo.its;++it) {
 
-  /*
-   * Solve linear system
-   */
-  HPLMXP_ptimer_boot();
-  HPLMXP_barrier(grid.all_comm);
-  time(&current_time_start);
-  HPLMXP_ptimer(0);
-  HPLMXP_pgesv(grid, algo, A, LU);
-  HPLMXP_ptimer(0);
-  time(&current_time_end);
+    /* Generate problem */
+    HPLMXP_prandmat(grid, LU);
+    HPLMXP_prandmat_rhs(grid, A);
+    HPLMXP_prandmat_x(grid, A);
+    HIP_CHECK(hipDeviceSynchronize());
 
-  /*
-   * Gather max of all CPU and WALL clock timings and print timing results
-   */
-  HPLMXP_ptimer_combine(
-      grid.all_comm, HPLMXP_AMAX_PTIME, HPLMXP_WALL_PTIME, 1, 0, wtime);
+    /*
+     * Solve linear system
+     */
+    HPLMXP_ptimer_boot();
+    HPLMXP_barrier(grid.all_comm);
+    HPLMXP_TracingPush("FOM Region");
+    time(&current_time_start);
+    HPLMXP_ptimer(0);
+    HPLMXP_pgesv(grid, algo, A, LU);
+    HPLMXP_ptimer(0);
+    time(&current_time_end);
+    HPLMXP_TracingPop("FOM Region");
 
-  if((myrow == 0) && (mycol == 0)) {
-    if(first) {
+    /*
+     * Gather max of all CPU and WALL clock timings and print timing results
+     */
+    HPLMXP_ptimer_combine(
+        grid.all_comm, HPLMXP_AMAX_PTIME, HPLMXP_WALL_PTIME, 1, 0, wtime);
+
+    if((myrow == 0) && (mycol == 0)) {
+      if(first) {
+        HPLMXP_fprintf(test.outfp,
+                       "%s%s\n",
+                       "========================================",
+                       "========================================");
+        HPLMXP_fprintf(test.outfp,
+                       "%s%s\n",
+                       "T/V                N    NB     P     Q",
+                       "               Time                 Gflops");
+        HPLMXP_fprintf(test.outfp,
+                       "%s%s\n",
+                       "----------------------------------------",
+                       "----------------------------------------");
+        if(test.thrsh <= HPLMXP_rzero) first = 0;
+      }
+      /*
+       * 2/3 N^3 - 1/2 N^2 flops for LU factorization + 2 N^2 flops for solve.
+       * Print WALL time
+       */
+      Gflops = (((double)(N) / 1.0e+9) * ((double)(N) / wtime[0])) *
+               ((2.0 / 3.0) * (double)(N) + (3.0 / 2.0));
+
+      if(algo.btopo == HPLMXP_1RING)
+        ctop = '0';
+      else if(algo.btopo == HPLMXP_1RING_M)
+        ctop = '1';
+      else if(algo.btopo == HPLMXP_2RING)
+        ctop = '2';
+      else if(algo.btopo == HPLMXP_2RING_M)
+        ctop = '3';
+      else if(algo.btopo == HPLMXP_BLONG)
+        ctop = '4';
+      else /* if( algo.btopo == HPLMXP_BLONG_M ) */
+        ctop = '5';
+
+      if(wtime[0] > HPLMXP_rzero) {
+        HPLMXP_fprintf(test.outfp,
+                       "W%c%c%17d %5d %5d %5d %18.2f     %18.3e\n",
+                       (grid.order == HPLMXP_ROW_MAJOR ? 'R' : 'C'),
+                       ctop,
+                       N,
+                       NB,
+                       nprow,
+                       npcol,
+                       wtime[0],
+                       Gflops);
+        HPLMXP_fprintf(test.outfp,
+                       "HPLMXP_pdgesv() start time %s\n",
+                       ctime(&current_time_start));
+        HPLMXP_fprintf(test.outfp,
+                       "HPLMXP_pdgesv() end time   %s\n",
+                       ctime(&current_time_end));
+      }
+#ifdef HPLMXP_PROGRESS_REPORT
+      printf("Final Score:    %7.4e GFLOPS \n", Gflops);
+#endif
+    }
+#ifdef HPLMXP_DETAILED_TIMING
+    HPLMXP_ptimer_combine(grid.all_comm,
+                          HPLMXP_AMAX_PTIME,
+                          HPLMXP_WALL_PTIME,
+                          HPLMXP_TIMING_N,
+                          HPLMXP_TIMING_BEG,
+                          HPLMXP_w);
+    if((myrow == 0) && (mycol == 0)) {
       HPLMXP_fprintf(test.outfp,
                      "%s%s\n",
-                     "========================================",
-                     "========================================");
+                     "--VVV--VVV--VVV--VVV--VVV--VVV--VVV--V",
+                     "VV--VVV--VVV--VVV--VVV--VVV--VVV--VVV-");
+      /*
+       * Dbcast
+       */
       HPLMXP_fprintf(test.outfp,
-                     "%s%s\n",
-                     "T/V                N    NB     P     Q",
-                     "               Time                 Gflops");
+                     "Max aggregated wall time D bcast . . : %18.2f\n",
+                     HPLMXP_w[HPLMXP_TIMING_DBCAST - HPLMXP_TIMING_BEG]);
+      /*
+       * Lbcast
+       */
+      HPLMXP_fprintf(test.outfp,
+                     "Max aggregated wall time L bcast . . : %18.2f\n",
+                     HPLMXP_w[HPLMXP_TIMING_LBCAST - HPLMXP_TIMING_BEG]);
+      /*
+       * Ubcast
+       */
+      HPLMXP_fprintf(test.outfp,
+                     "Max aggregated wall time U bcast . . : %18.2f\n",
+                     HPLMXP_w[HPLMXP_TIMING_UBCAST - HPLMXP_TIMING_BEG]);
+      /*
+       * Update
+       */
+      HPLMXP_fprintf(test.outfp,
+                     "Max aggregated wall time update  . . : %18.2f\n",
+                     HPLMXP_w[HPLMXP_TIMING_UPDATE - HPLMXP_TIMING_BEG]);
+      /*
+       * Iterative Refinement
+       */
+      HPLMXP_fprintf(test.outfp,
+                     "Max aggregated wall time Iter Refine : %18.2f\n",
+                     HPLMXP_w[HPLMXP_TIMING_IR - HPLMXP_TIMING_BEG]);
+
+      if(test.thrsh <= HPLMXP_rzero)
+        HPLMXP_fprintf(test.outfp,
+                       "%s%s\n",
+                       "========================================",
+                       "========================================");
+    }
+#endif
+
+    /*
+     * Computes and displays norms, residuals ...
+     */
+    double resid1;
+    if(N <= 0) {
+      resid1 = HPLMXP_rzero;
+    } else {
+      resid1 = A.res;
+    }
+
+    if(resid1 < test.thrsh)
+      (test.kpass)++;
+    else
+      (test.kfail)++;
+
+    if((myrow == 0) && (mycol == 0)) {
       HPLMXP_fprintf(test.outfp,
                      "%s%s\n",
                      "----------------------------------------",
                      "----------------------------------------");
-      if(test.thrsh <= HPLMXP_rzero) first = 0;
-    }
-    /*
-     * 2/3 N^3 - 1/2 N^2 flops for LU factorization + 2 N^2 flops for solve.
-     * Print WALL time
-     */
-    Gflops = (((double)(N) / 1.0e+9) * ((double)(N) / wtime[0])) *
-             ((2.0 / 3.0) * (double)(N) + (3.0 / 2.0));
-
-    if(algo.btopo == HPLMXP_1RING)
-      ctop = '0';
-    else if(algo.btopo == HPLMXP_1RING_M)
-      ctop = '1';
-    else if(algo.btopo == HPLMXP_2RING)
-      ctop = '2';
-    else if(algo.btopo == HPLMXP_2RING_M)
-      ctop = '3';
-    else if(algo.btopo == HPLMXP_BLONG)
-      ctop = '4';
-    else /* if( algo.btopo == HPLMXP_BLONG_M ) */
-      ctop = '5';
-
-    if(wtime[0] > HPLMXP_rzero) {
       HPLMXP_fprintf(test.outfp,
-                     "W%c%c%17d %5d %5d %5d %18.2f     %18.3e\n",
-                     (grid.order == HPLMXP_ROW_MAJOR ? 'R' : 'C'),
-                     ctop,
-                     N,
-                     NB,
-                     nprow,
-                     npcol,
-                     wtime[0],
-                     Gflops);
-      HPLMXP_fprintf(test.outfp,
-                     "HPLMXP_pdgesv() start time %s\n",
-                     ctime(&current_time_start));
-      HPLMXP_fprintf(test.outfp,
-                     "HPLMXP_pdgesv() end time   %s\n",
-                     ctime(&current_time_end));
-    }
-#ifdef HPLMXP_PROGRESS_REPORT
-    printf("Final Score:    %7.4e GFLOPS \n", Gflops);
-#endif
-  }
-#ifdef HPLMXP_DETAILED_TIMING
-  HPLMXP_ptimer_combine(grid.all_comm,
-                        HPLMXP_AMAX_PTIME,
-                        HPLMXP_WALL_PTIME,
-                        HPLMXP_TIMING_N,
-                        HPLMXP_TIMING_BEG,
-                        HPLMXP_w);
-  if((myrow == 0) && (mycol == 0)) {
-    HPLMXP_fprintf(test.outfp,
-                   "%s%s\n",
-                   "--VVV--VVV--VVV--VVV--VVV--VVV--VVV--V",
-                   "VV--VVV--VVV--VVV--VVV--VVV--VVV--VVV-");
-    /*
-     * Dbcast
-     */
-    HPLMXP_fprintf(test.outfp,
-                   "Max aggregated wall time D bcast . . : %18.2f\n",
-                   HPLMXP_w[HPLMXP_TIMING_DBCAST - HPLMXP_TIMING_BEG]);
-    /*
-     * Lbcast
-     */
-    HPLMXP_fprintf(test.outfp,
-                   "Max aggregated wall time L bcast . . : %18.2f\n",
-                   HPLMXP_w[HPLMXP_TIMING_LBCAST - HPLMXP_TIMING_BEG]);
-    /*
-     * Ubcast
-     */
-    HPLMXP_fprintf(test.outfp,
-                   "Max aggregated wall time U bcast . . : %18.2f\n",
-                   HPLMXP_w[HPLMXP_TIMING_UBCAST - HPLMXP_TIMING_BEG]);
-    /*
-     * Update
-     */
-    HPLMXP_fprintf(test.outfp,
-                   "Max aggregated wall time update  . . : %18.2f\n",
-                   HPLMXP_w[HPLMXP_TIMING_UPDATE - HPLMXP_TIMING_BEG]);
-    /*
-     * Iterative Refinement
-     */
-    HPLMXP_fprintf(test.outfp,
-                   "Max aggregated wall time Iter Refine : %18.2f\n",
-                   HPLMXP_w[HPLMXP_TIMING_IR - HPLMXP_TIMING_BEG]);
+                     "%s%16.7f%s%s\n",
+                     "||Ax-b||_oo/(eps*(||A||_oo*||x||_oo+||b||_oo)*N)= ",
+                     resid1,
+                     " ...... ",
+                     (resid1 < test.thrsh ? "PASSED" : "FAILED"));
 
-    if(test.thrsh <= HPLMXP_rzero)
-      HPLMXP_fprintf(test.outfp,
-                     "%s%s\n",
-                     "========================================",
-                     "========================================");
-  }
-#endif
-
-  /*
-   * Computes and displays norms, residuals ...
-   */
-  double resid1;
-  if(N <= 0) {
-    resid1 = HPLMXP_rzero;
-  } else {
-    resid1 = A.res;
-  }
-
-  if(resid1 < test.thrsh)
-    (test.kpass)++;
-  else
-    (test.kfail)++;
-
-  if((myrow == 0) && (mycol == 0)) {
-    HPLMXP_fprintf(test.outfp,
-                   "%s%s\n",
-                   "----------------------------------------",
-                   "----------------------------------------");
-    HPLMXP_fprintf(test.outfp,
-                   "%s%16.7f%s%s\n",
-                   "||Ax-b||_oo/(eps*(||A||_oo*||x||_oo+||b||_oo)*N)= ",
-                   resid1,
-                   " ...... ",
-                   (resid1 < test.thrsh ? "PASSED" : "FAILED"));
-
-    if(resid1 >= test.thrsh) {
-      HPLMXP_fprintf(test.outfp,
-                     "%s%18.6f\n",
-                     "||A||_oo . . . . . . . . . . . . . . . . . . . = ",
-                     A.norma);
-      HPLMXP_fprintf(test.outfp,
-                     "%s%18.6f\n",
-                     "||b||_oo . . . . . . . . . . . . . . . . . . . = ",
-                     A.normb);
-    }
+      if(resid1 >= test.thrsh) {
+        HPLMXP_fprintf(test.outfp,
+                       "%s%18.6f\n",
+                       "||A||_oo . . . . . . . . . . . . . . . . . . . = ",
+                       A.norma);
+        HPLMXP_fprintf(test.outfp,
+                       "%s%18.6f\n",
+                       "||b||_oo . . . . . . . . . . . . . . . . . . . = ",
+                       A.normb);
+      }
 
 #ifdef HPLMXP_PROGRESS_REPORT
-    if(resid1 < test.thrsh)
-      printf("Residual Check: PASSED \n");
-    else
-      printf("Residual Check: FAILED \n");
+      if(resid1 < test.thrsh)
+        printf("Residual Check: PASSED \n");
+      else
+        printf("Residual Check: FAILED \n");
 #endif
+    }
   }
 
   HPLMXP_pmat_free(LU);
