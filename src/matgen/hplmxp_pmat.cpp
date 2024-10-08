@@ -36,6 +36,16 @@ void HPLMXP_pmat_init(HPLMXP_T_grid&    grid,
   A.norma = 0.0;
   A.normb = 0.0;
   A.res   = 0.0;
+
+  A.piv  = nullptr;
+  A.pivL = nullptr;
+  A.pivU = nullptr;
+  A.work = nullptr;
+
+  A.panels[0].L = nullptr;
+  A.panels[0].U = nullptr;
+  A.panels[1].L = nullptr;
+  A.panels[1].U = nullptr;
 }
 
 template void HPLMXP_pmat_init(HPLMXP_T_grid&         grid,
@@ -50,21 +60,43 @@ template void HPLMXP_pmat_init(HPLMXP_T_grid&        grid,
 
 template <typename T>
 void HPLMXP_pmat_free(HPLMXP_T_pmat<T>& A) {
-  if(A.A) {
-    HIP_CHECK(hipFree(A.A));
-    A.A = nullptr;
+
+  if(A.work) {
+    HIP_CHECK(hipFree(A.work));
+    A.work = nullptr;
   }
-  if(A.x) {
-    HIP_CHECK(hipFree(A.x));
-    A.x = nullptr;
+
+  HPLMXP_pdpanel_free(A.panels[1]);
+  HPLMXP_pdpanel_free(A.panels[0]);
+
+  if(A.pivU) {
+    HIP_CHECK(hipFree(A.pivU));
+    A.pivU = nullptr;
+  }
+  if(A.pivL) {
+    HIP_CHECK(hipFree(A.pivL));
+    A.pivL = nullptr;
+  }
+  if(A.piv) {
+    HIP_CHECK(hipFree(A.piv));
+    A.piv = nullptr;
+  }
+
+  if(A.b) {
+    HIP_CHECK(hipFree(A.b));
+    A.b = nullptr;
   }
   if(A.d) {
     HIP_CHECK(hipFree(A.d));
     A.d = nullptr;
   }
-  if(A.b) {
-    HIP_CHECK(hipFree(A.b));
-    A.b = nullptr;
+  if(A.x) {
+    HIP_CHECK(hipFree(A.x));
+    A.x = nullptr;
+  }
+  if(A.A) {
+    HIP_CHECK(hipFree(A.A));
+    A.A = nullptr;
   }
 }
 

@@ -3,10 +3,10 @@
 #include "hplmxp_rand.hpp"
 
 /* 128, 256, 512, 1024 */
-#define MATGEN_DIAG_DIM 256
+#define RANDMAT_DIAG_DIM 256
 
 template <typename T>
-__global__ void matgen_diag(const int n,
+__global__ void randmat_diag(const int n,
                             const int nb,
                             const int nbcol,
                             const int myrow,
@@ -20,7 +20,7 @@ __global__ void matgen_diag(const int n,
                             RandCoeff jump_qnb,
                             T* __restrict__ d) {
 
-  __shared__ double s_d[MATGEN_DIAG_DIM];
+  __shared__ double s_d[RANDMAT_DIAG_DIM];
 
   const int il = blockIdx.x; // local row index
   const int bi = il / nb;    // row block
@@ -34,7 +34,7 @@ __global__ void matgen_diag(const int n,
   stat_ij *= pow(jump_j, threadIdx.x); // each thread shifts to a distinct
                                        // column
 
-  RandCoeff jump_tb = pow(jump_j, MATGEN_DIAG_DIM);
+  RandCoeff jump_tb = pow(jump_j, RANDMAT_DIAG_DIM);
 
   double dj = 0.0;
 
@@ -42,9 +42,9 @@ __global__ void matgen_diag(const int n,
   for(int b = 0; b < nbcol; ++b) {
     RandStat stat_j = stat_ij;
     // loop through columns in panel
-    for(int j = threadIdx.x; j < nb; j += MATGEN_DIAG_DIM) {
+    for(int j = threadIdx.x; j < nb; j += RANDMAT_DIAG_DIM) {
       dj += std::abs(stat_j.toDouble());
-      stat_j *= jump_tb; // shift by MATGEN_DIAG_DIM columns
+      stat_j *= jump_tb; // shift by RANDMAT_DIAG_DIM columns
     }
     stat_ij *= jump_qnb; // shift by Q*NB columns to next panel
   }
@@ -66,15 +66,15 @@ __global__ void matgen_diag(const int n,
   s_d[t] = dj;
   __syncthreads();
 
-#if MATGEN_DIAG_DIM > 512
+#if RANDMAT_DIAG_DIM > 512
   if(t < 512) s_d[t] += s_d[t + 512];
   __syncthreads();
 #endif
-#if MATGEN_DIAG_DIM > 256
+#if RANDMAT_DIAG_DIM > 256
   if(t < 256) s_d[t] += s_d[t + 256];
   __syncthreads();
 #endif
-#if MATGEN_DIAG_DIM > 128
+#if RANDMAT_DIAG_DIM > 128
   if(t < 128) s_d[t] += s_d[t + 128];
   __syncthreads();
 #endif
@@ -94,10 +94,10 @@ __global__ void matgen_diag(const int n,
 }
 
 /* 128, 256, 512, 1024 */
-#define MATGEN_RHS_DIM 256
+#define RANDMAT_RHS_DIM 256
 
 template <typename T>
-__global__ void matgen_rhs(const int n,
+__global__ void randmat_rhs(const int n,
                            const int nb,
                            const int myrow,
                            const int mycol,
@@ -126,10 +126,10 @@ __global__ void matgen_rhs(const int n,
   }
 }
 
-#define MATGEN_DIM 256
+#define RANDMAT_DIM 256
 
 template <typename T>
-__global__ void matgen(const int n,
+__global__ void randmat(const int n,
                        const int nb,
                        const int nbrow,
                        RandStat  stat_ij,
@@ -149,7 +149,7 @@ __global__ void matgen(const int n,
   stat_ij *= pow(jump_qnb, bj); // shift to column block
   stat_ij *= pow(jump_j, j);    // shift to column in block
 
-  RandCoeff jump_tb = pow(jump_i, MATGEN_DIM);
+  RandCoeff jump_tb = pow(jump_i, RANDMAT_DIM);
 
   stat_ij *= pow(jump_i, threadIdx.x); // each thread shift to distinct row
 
@@ -158,9 +158,9 @@ __global__ void matgen(const int n,
     RandStat stat_i = stat_ij;
 
     // loop through rows in panel
-    for(int i = threadIdx.x; i < nb; i += MATGEN_DIM) {
+    for(int i = threadIdx.x; i < nb; i += RANDMAT_DIM) {
       Aj[i] = stat_i.toDouble();
-      stat_i *= jump_tb; // shift by MATGEN_DIM rows
+      stat_i *= jump_tb; // shift by RANDMAT_DIM rows
     }
 
     stat_ij *= jump_pnb; // shift by P*NB rows to next panel
@@ -169,7 +169,7 @@ __global__ void matgen(const int n,
 }
 
 template <typename T>
-__global__ void matgen_write_diag(const int n,
+__global__ void randmat_write_diag(const int n,
                                   const int nb,
                                   const int myrow,
                                   const int mycol,
@@ -194,7 +194,7 @@ __global__ void matgen_write_diag(const int n,
 }
 
 template <typename T>
-void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   int const n     = A.n;
   int const b     = A.nb;
@@ -206,26 +206,7 @@ void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   int const nprow = grid.nprow;
   int const npcol = grid.npcol;
 
-  // Allocate matrix on device
-  A.ld      = (((sizeof(T) * b * nbrow + 767) / 1024) * 1024 + 256) / sizeof(T);
-  size_t sz = sizeof(T) * b * nbcol * A.ld;
-
-#ifdef HPLMXP_VERBOSE_PRINT
-  if((myrow == 0) && (mycol == 0)) {
-    printf("Local matrix size = %g GBs\n", ((double)sz) / (1024 * 1024 * 1024));
-  }
-#endif
-
-  if(hipMalloc(&(A.A), sz) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pmatgen", "Memory allocation failed for A.");
-  }
-
-  double* d = nullptr;
-  if(hipMalloc(&d, sizeof(double) * b * nbrow) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pmatgen", "Memory allocation failed for d.");
-  }
+  double* d = A.work;
 
   RandCoeff jump_i = RandCoeff::default_vals();
   RandCoeff jump_j = pow(jump_i, n);
@@ -240,8 +221,8 @@ void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   // generate diagonal in double precision
   dim3 gs = b * nbrow;
-  dim3 bs = MATGEN_DIAG_DIM;
-  matgen_diag<<<gs, bs, 0, computeStream>>>(n,
+  dim3 bs = RANDMAT_DIAG_DIM;
+  randmat_diag<<<gs, bs, 0, computeStream>>>(n,
                                             b,
                                             nbcol,
                                             myrow,
@@ -259,8 +240,8 @@ void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   // generate matrix
   gs = dim3(b, nbcol);
-  bs = dim3(MATGEN_DIM);
-  matgen<<<gs, bs, 0, computeStream>>>(
+  bs = dim3(RANDMAT_DIM);
+  randmat<<<gs, bs, 0, computeStream>>>(
       n, b, nbrow, stat_ij, jump_i, jump_j, jump_pnb, jump_qnb, A.A, A.ld);
   HIP_CHECK(hipGetLastError());
 
@@ -268,22 +249,19 @@ void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   HPLMXP_all_reduce(d, b * nbrow, HPLMXP_SUM, grid.row_comm);
 
   // write diagonal into matrix
-  gs = (b * nbrow + MATGEN_RHS_DIM - 1) / MATGEN_RHS_DIM;
-  bs = MATGEN_RHS_DIM;
-  matgen_write_diag<<<gs, bs, 0, computeStream>>>(
+  gs = (b * nbrow + RANDMAT_RHS_DIM - 1) / RANDMAT_RHS_DIM;
+  bs = RANDMAT_RHS_DIM;
+  randmat_write_diag<<<gs, bs, 0, computeStream>>>(
       n, b, myrow, mycol, nprow, npcol, d, A.A, A.ld);
   HIP_CHECK(hipGetLastError());
-
-  HIP_CHECK(hipDeviceSynchronize());
-  HIP_CHECK(hipFree(d));
 }
 
-template void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
 
-template void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
+template void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
 
 template <typename T>
-void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   int n     = A.n;
   int nb    = A.nb;
@@ -292,11 +270,6 @@ void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   int mycol = grid.mycol;
   int nprow = grid.nprow;
   int npcol = grid.npcol;
-
-  if(hipMalloc(&(A.b), sizeof(T) * nb * nbrow) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pmatgen_rhs", "Memory allocation failed for b.");
-  }
 
   RandCoeff jump_i = RandCoeff::default_vals();
   RandCoeff jump_j = pow(jump_i, n);
@@ -308,21 +281,21 @@ void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   RandCoeff jump_pnb = pow(jump_i, nb * nprow);
 
-  int gs = (nb * nbrow + MATGEN_RHS_DIM - 1) / MATGEN_RHS_DIM;
-  int bs = MATGEN_RHS_DIM;
-  matgen_rhs<<<gs, bs, 0, computeStream>>>(
+  int gs = (nb * nbrow + RANDMAT_RHS_DIM - 1) / RANDMAT_RHS_DIM;
+  int bs = RANDMAT_RHS_DIM;
+  randmat_rhs<<<gs, bs, 0, computeStream>>>(
       n, nb, myrow, mycol, nprow, npcol, stat_rhs, jump_i, jump_pnb, A.b);
   HIP_CHECK(hipGetLastError());
 
   A.normb = HPLMXP_plange(grid, nb * nbrow, nb, A.b);
 }
 
-template void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
 
-template void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
+template void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
 
 template <typename T>
-void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   int n     = A.n;
   int nb    = A.nb;
@@ -332,15 +305,6 @@ void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   int mycol = grid.mycol;
   int nprow = grid.nprow;
   int npcol = grid.npcol;
-
-  if(hipMalloc(&(A.x), sizeof(T) * nb * nbrow) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pmatgen_x", "Memory allocation failed for x.");
-  }
-  if(hipMalloc(&(A.d), sizeof(T) * nb * nbrow) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pmatgen_x", "Memory allocation failed for d.");
-  }
 
   RandCoeff jump_i = RandCoeff::default_vals();
   RandCoeff jump_j = pow(jump_i, n);
@@ -354,8 +318,8 @@ void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   RandCoeff jump_qnb = pow(jump_j, nb * npcol);
 
   int gs = nb * nbrow;
-  int bs = MATGEN_DIAG_DIM;
-  matgen_diag<<<gs, bs, 0, computeStream>>>(n,
+  int bs = RANDMAT_DIAG_DIM;
+  randmat_diag<<<gs, bs, 0, computeStream>>>(n,
                                             nb,
                                             nbcol,
                                             myrow,
@@ -384,6 +348,6 @@ void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   A.norma = 2. * HPLMXP_plange(grid, nb * nbrow, nb, A.d);
 }
 
-template void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
 
-template void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
+template void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);

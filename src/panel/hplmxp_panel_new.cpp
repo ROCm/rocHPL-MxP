@@ -16,15 +16,33 @@
 
 #include "hplmxp.hpp"
 
-void HPLMXP_pdpanel_new(HPLMXP_T_grid&         grid,
-                        HPLMXP_T_pmat<fp32_t>& A,
-                        const int              N,
-                        const int              NB,
-                        const int              IA,
-                        const int              JA,
-                        const int              II,
-                        const int              JJ,
-                        HPLMXP_T_panel&        P) {
+static int deviceMalloc(HPLMXP_T_grid&  grid,
+                        void**          ptr,
+                        const size_t    bytes) {
+
+  hipError_t err = hipMalloc(ptr, bytes);
+
+  /*Check allocation is valid*/
+  int error = (err != hipSuccess);
+  HPLMXP_all_reduce(&error, 1, HPLMXP_MAX, grid.all_comm);
+  if(error != 0) {
+    return HPLMXP_FAILURE;
+  } else {
+    return HPLMXP_SUCCESS;
+  }
+}
+
+template<typename T>
+int HPLMXP_pdpanel_new(HPLMXP_T_grid&      grid,
+                       HPLMXP_T_pmat<T>&   A,
+                       const int           N,
+                       const int           NB,
+                       const int           IA,
+                       const int           JA,
+                       const int           II,
+                       const int           JJ,
+                       HPLMXP_T_panel<T>&  P,
+                       size_t&             totalMem) {
   /*
    * Purpose
    * =======
@@ -74,11 +92,55 @@ void HPLMXP_pdpanel_new(HPLMXP_T_grid&         grid,
    * ---------------------------------------------------------------------
    */
 
-  P.max_lwork_size = 0;
-  P.max_uwork_size = 0;
-  P.grid           = nullptr;
-  P.A              = nullptr;
-  P.L              = nullptr;
-  P.U              = nullptr;
-  HPLMXP_pdpanel_init(grid, A, N, NB, IA, JA, II, JJ, P);
+  P.ldl = (((sizeof(fp16_t) * A.mp + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
+  size_t numbytes = sizeof(fp16_t) * A.nb * P.ldl;
+  totalMem += numbytes;
+  if(deviceMalloc(grid, reinterpret_cast<void**>(&(P.L)), numbytes) != HPLMXP_SUCCESS) {
+    if(grid.iam == 0)
+      HPLMXP_pwarn(stderr,
+                   __LINE__,
+                   "HPLMXP_pdpanel_new",
+                   "Device memory allocation failed for L. Requested %g GiBs total. Test Skiped.",
+                   ((double)totalMem) / (1024 * 1024 * 1024));
+    return HPLMXP_FAILURE;
+  }
+
+  P.ldu = (((sizeof(fp16_t) * A.nq + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
+  numbytes = sizeof(fp16_t) * A.nb * P.ldu;
+  totalMem += numbytes;
+  if(deviceMalloc(grid, reinterpret_cast<void**>(&(P.U)), numbytes) != HPLMXP_SUCCESS) {
+    if(grid.iam == 0)
+      HPLMXP_pwarn(stderr,
+                   __LINE__,
+                   "HPLMXP_pdpanel_new",
+                   "Device memory allocation failed for U. Requested %g GiBs total. Test Skiped.",
+                   ((double)totalMem) / (1024 * 1024 * 1024));
+    return HPLMXP_FAILURE;
+  }
+
+  return HPLMXP_SUCCESS;
 }
+
+template
+int HPLMXP_pdpanel_new(HPLMXP_T_grid&           grid,
+                       HPLMXP_T_pmat<double>&   A,
+                       const int                N,
+                       const int                NB,
+                       const int                IA,
+                       const int                JA,
+                       const int                II,
+                       const int                JJ,
+                       HPLMXP_T_panel<double>&  P,
+                       size_t&                  totalMem);
+
+template
+int HPLMXP_pdpanel_new(HPLMXP_T_grid&          grid,
+                       HPLMXP_T_pmat<float>&   A,
+                       const int               N,
+                       const int               NB,
+                       const int               IA,
+                       const int               JA,
+                       const int               II,
+                       const int               JJ,
+                       HPLMXP_T_panel<float>&  P,
+                       size_t&                 totalMem);

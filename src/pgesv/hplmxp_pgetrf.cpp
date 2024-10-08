@@ -57,38 +57,15 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
   int const nprow = grid.nprow;
   int const npcol = grid.npcol;
 
+  const int ldpiv = b;
+
   const fp32_t one   = 1.0;
   const fp32_t alpha = -1.0;
   const fp32_t beta  = 1.0;
 
-  /* piv */
-  fp32_t*   piv   = nullptr;
-  const int ldpiv = b;
-  if(hipMalloc(&piv, sizeof(fp32_t) * b * ldpiv) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pgetrf", "Memory allocation failed for piv.");
-  }
-  fp16_t* pivL = nullptr;
-  if(hipMalloc(&pivL, sizeof(fp16_t) * b * ldpiv) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pgetrf", "Memory allocation failed for pivL.");
-  }
-  fp16_t* pivU = nullptr;
-  if(hipMalloc(&pivU, sizeof(fp16_t) * b * ldpiv) != hipSuccess) {
-    HPLMXP_pabort(
-        __LINE__, "HPLMXP_pgetrf", "Memory allocation failed for pivU.");
-  }
-
-  HPLMXP_identity(b, pivL, ldpiv);
-  HPLMXP_identity(b, pivU, ldpiv);
-
   int i = 0, j = 0;
   int ip1 = i + (((1 % grid.nprow) == grid.myrow) ? 1 : 0);
   int jp1 = j + (((1 % grid.npcol) == grid.mycol) ? 1 : 0);
-
-  HPLMXP_T_panel panels[2];
-  HPLMXP_pdpanel_new(grid, A, N, b, 0, 0, i * b, j * b, panels[0]);
-  HPLMXP_pdpanel_new(grid, A, N - b, b, b, b, ip1 * b, jp1 * b, panels[1]);
 
 #ifdef HPLMXP_PROGRESS_REPORT
 #ifdef HPLMXP_DETAILED_TIMING
@@ -132,8 +109,8 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
 
     double stepStart = MPI_Wtime();
 
-    HPLMXP_T_panel& prev = panels[k % 2];
-    HPLMXP_T_panel& next = panels[(k + 1) % 2];
+    HPLMXP_T_panel<fp32_t>& prev = A.panels[k % 2];
+    HPLMXP_T_panel<fp32_t>& next = A.panels[(k + 1) % 2];
 
     int const rootrow = k % grid.nprow;
     int const rootcol = k % grid.npcol;
@@ -166,11 +143,11 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       }
 
       /* Factor panel */
-      HPLMXP_lacpy(b, b, Mptr(Ap, i * b, j * b, lda), lda, piv, ldpiv);
-      HPLMXP_getrf(b, b, piv, ldpiv);
-      HPLMXP_lacpy(b, b, piv, ldpiv, Mptr(Ap, i * b, j * b, lda), lda);
-      HPLMXP_trtriU(b, piv, ldpiv);
-      HPLMXP_trtriL(b, piv, ldpiv);
+      HPLMXP_lacpy(b, b, Mptr(Ap, i * b, j * b, lda), lda, A.piv, ldpiv);
+      HPLMXP_getrf(b, b, A.piv, ldpiv);
+      HPLMXP_lacpy(b, b, A.piv, ldpiv, Mptr(Ap, i * b, j * b, lda), lda);
+      HPLMXP_trtriU(b, A.piv, ldpiv);
+      HPLMXP_trtriL(b, A.piv, ldpiv);
 
       /* Record */
       HIP_CHECK(hipEventRecord(getrf, computeStream));
@@ -205,12 +182,12 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       if(!icurrow) {
         HPLMXP_TracingPush("D Column Bcast");
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-        HPLMXP_bcast(piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
+        HPLMXP_bcast(A.piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
         HPLMXP_TracingPop("D Column Bcast");
       }
 
-      HPLMXP_latcpyU(b, b, piv, ldpiv, pivU, ldpiv);
+      HPLMXP_latcpyU(b, b, A.piv, ldpiv, A.pivU, ldpiv);
 
       HPLMXP_gemmNT(A.mp - ip1 * b,
                     b,
@@ -218,7 +195,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
                     one,
                     next.L,
                     next.ldl,
-                    pivU,
+                    A.pivU,
                     ldpiv,
                     fp32_t{0.0},
                     Mptr(Ap, ip1 * b, j * b, lda),
@@ -264,18 +241,18 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       if(!icurcol) {
         HPLMXP_TracingPush("D Row Bcast");
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-        HPLMXP_bcast(piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
+        HPLMXP_bcast(A.piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
         HPLMXP_TracingPop("D Row Bcast");
       }
 
-      HPLMXP_lacpyL(b, b, piv, ldpiv, pivL, ldpiv);
+      HPLMXP_lacpyL(b, b, A.piv, ldpiv, A.pivL, ldpiv);
 
       HPLMXP_gemmNT(b,
                     A.nq - jp1 * b,
                     b,
                     one,
-                    pivL,
+                    A.pivL,
                     ldpiv,
                     next.U,
                     next.ldu,
@@ -319,14 +296,14 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       /* broadcast piv */
       HPLMXP_TracingPush("D Row Bcast");
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-      HPLMXP_bcast(piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
+      HPLMXP_bcast(A.piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
       HPLMXP_TracingPop("D Row Bcast");
 
       /* broadcast piv */
       HPLMXP_TracingPush("D Column Bcast");
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-      HPLMXP_bcast(piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
+      HPLMXP_bcast(A.piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
       HPLMXP_TracingPop("D Column Bcast");
     }
@@ -450,11 +427,4 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
     i = ip1;
     j = jp1;
   }
-
-  HPLMXP_pdpanel_free(panels[1]);
-  HPLMXP_pdpanel_free(panels[0]);
-
-  HIP_CHECK(hipFree(pivU));
-  HIP_CHECK(hipFree(pivL));
-  HIP_CHECK(hipFree(piv));
 }

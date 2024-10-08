@@ -21,6 +21,7 @@
  * ---------------------------------------------------------------------
  */
 #include "hplmxp_grid.hpp"
+#include "hplmxp_panel.hpp"
 
 /*
  * ---------------------------------------------------------------------
@@ -49,6 +50,14 @@ struct HPLMXP_T_pmat {
   fp64_t norma; /* matrix norm */
   fp64_t normb; /* rhs vector norm */
   fp64_t res;   /* residual norm */
+
+  fp32_t* piv;  /* pointer to diagonal panel */
+  fp16_t* pivL; /* pointer to diagonal panel */
+  fp16_t* pivU; /* pointer to diagonal panel */
+
+  fp64_t* work; /* workspace */
+
+  HPLMXP_T_panel<T> panels[2];
 };
 
 /*

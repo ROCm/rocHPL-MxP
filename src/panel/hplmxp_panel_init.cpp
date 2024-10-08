@@ -16,15 +16,16 @@
 
 #include "hplmxp.hpp"
 
-void HPLMXP_pdpanel_init(HPLMXP_T_grid&         grid,
-                         HPLMXP_T_pmat<fp32_t>& A,
-                         const int              N,
-                         const int              NB,
-                         const int              IA,
-                         const int              JA,
-                         const int              II,
-                         const int              JJ,
-                         HPLMXP_T_panel&        P) {
+template <typename T>
+void HPLMXP_pdpanel_init(HPLMXP_T_grid&      grid,
+                         HPLMXP_T_pmat<T>&   A,
+                         const int           N,
+                         const int           NB,
+                         const int           IA,
+                         const int           JA,
+                         const int           II,
+                         const int           JJ,
+                         HPLMXP_T_panel<T>&  P) {
   /*
    * Purpose
    * =======
@@ -98,47 +99,28 @@ void HPLMXP_pdpanel_init(HPLMXP_T_grid&         grid,
   P.prow            = icurrow; /* proc row owning 1st row of trailing A */
   P.pcol            = icurcol; /* proc col owning 1st col of trailing A */
 
-  /* space for L */
-  if(P.mp > 0) {
-    P.ldl =
-        (((sizeof(fp16_t) * P.mp + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
-  } else {
-    P.ldl = 0;
-  }
-  size_t lwork = NB * static_cast<size_t>(P.ldl);
-
-  if(P.max_lwork_size < lwork * sizeof(fp16_t)) {
-    if(P.L) { HIP_CHECK(hipFree(P.L)); }
-    size_t numbytes = lwork * sizeof(fp16_t);
-
-    if(hipMalloc((void**)&(P.L), numbytes) != hipSuccess) {
-      HPLMXP_pabort(__LINE__,
-                    "HPLMXP_pdpanel_init",
-                    "Device memory allocation failed for L workspace.");
-    }
-
-    P.max_lwork_size = lwork * sizeof(fp16_t);
-  }
-
-  /* space for U */
-  if(P.nq > 0) {
-    P.ldu =
-        (((sizeof(fp16_t) * P.nq + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
-  } else {
-    P.ldu = 0;
-  }
-  size_t uwork = NB * static_cast<size_t>(P.ldu);
-
-  if(P.max_uwork_size < uwork * sizeof(fp16_t)) {
-    if(P.U) { HIP_CHECK(hipFree(P.U)); }
-    size_t numbytes = uwork * sizeof(fp16_t);
-
-    if(hipMalloc((void**)&(P.U), numbytes) != hipSuccess) {
-      HPLMXP_pabort(__LINE__,
-                    "HPLMXP_pdpanel_init",
-                    "Device memory allocation failed for U workspace.");
-    }
-
-    P.max_uwork_size = uwork * sizeof(fp16_t);
-  }
+  P.ldl = (((sizeof(fp16_t) * P.mp + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
+  P.ldu = (((sizeof(fp16_t) * P.nq + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
 }
+
+template
+void HPLMXP_pdpanel_init(HPLMXP_T_grid&          grid,
+                         HPLMXP_T_pmat<double>&  A,
+                         const int               N,
+                         const int               NB,
+                         const int               IA,
+                         const int               JA,
+                         const int               II,
+                         const int               JJ,
+                         HPLMXP_T_panel<double>& P);
+
+template
+void HPLMXP_pdpanel_init(HPLMXP_T_grid&          grid,
+                         HPLMXP_T_pmat<float>&   A,
+                         const int               N,
+                         const int               NB,
+                         const int               IA,
+                         const int               JA,
+                         const int               II,
+                         const int               JJ,
+                         HPLMXP_T_panel<float>&  P);

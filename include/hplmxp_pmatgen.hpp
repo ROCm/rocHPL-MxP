@@ -34,13 +34,22 @@ void HPLMXP_pmat_init(HPLMXP_T_grid&    grid,
                       HPLMXP_T_pmat<T>& A);
 
 template <typename T>
-void HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
+int HPLMXP_pmatgen(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A, size_t& totalMem);
 
 template <typename T>
-void HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
+int HPLMXP_pmatgen_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A, size_t& totalMem);
 
 template <typename T>
-void HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
+int HPLMXP_pmatgen_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A, size_t& totalMem);
+
+template <typename T>
+void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
+
+template <typename T>
+void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
+
+template <typename T>
+void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A);
 
 template <typename T>
 void HPLMXP_pmat_free(HPLMXP_T_pmat<T>& A);

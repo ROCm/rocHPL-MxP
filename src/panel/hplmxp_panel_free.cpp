@@ -15,7 +15,8 @@
  */
 #include "hplmxp.hpp"
 
-int HPLMXP_pdpanel_free(HPLMXP_T_panel& P) {
+template<typename T>
+int HPLMXP_pdpanel_free(HPLMXP_T_panel<T>& P) {
   /*
    * Purpose
    * =======
@@ -42,8 +43,11 @@ int HPLMXP_pdpanel_free(HPLMXP_T_panel& P) {
     P.U = nullptr;
   }
 
-  P.max_lwork_size = 0;
-  P.max_uwork_size = 0;
-
   return (HPLMXP_SUCCESS);
 }
+
+template
+int HPLMXP_pdpanel_free(HPLMXP_T_panel<double>& P);
+
+template
+int HPLMXP_pdpanel_free(HPLMXP_T_panel<float>& P);

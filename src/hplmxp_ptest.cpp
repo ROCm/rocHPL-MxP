@@ -80,21 +80,10 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
   static int first = 1;
   char       ctop, cpfact, crfact;
   time_t     current_time_start, current_time_end;
+  int        ierr;
 
   int mycol, myrow, npcol, nprow;
   HPLMXP_grid_info(grid, nprow, npcol, myrow, mycol);
-
-  /* Create a rocBLAS handle */
-  ROCBLAS_CHECK(rocblas_create_handle(&blas_hdl));
-  ROCBLAS_CHECK(rocblas_set_pointer_mode(blas_hdl, rocblas_pointer_mode_host));
-  ROCBLAS_CHECK(rocblas_set_stream(blas_hdl, computeStream));
-
-#ifdef HPLMXP_ROCBLAS_ALLOW_ATOMICS
-  ROCBLAS_CHECK(rocblas_set_atomics_mode(blas_hdl, rocblas_atomics_allowed));
-#else
-  ROCBLAS_CHECK(
-      rocblas_set_atomics_mode(blas_hdl, rocblas_atomics_not_allowed));
-#endif
 
   /* Create an fp64 Matrix */
   HPLMXP_T_pmat<fp64_t> A;
@@ -105,14 +94,46 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
   HPLMXP_pmat_init(grid, N, NB, LU);
 
   /* generate fp32 matrix on device */
-  HPLMXP_pmatgen(grid, LU);
+  size_t totalMem = 0;
+  ierr = HPLMXP_pmatgen(grid, LU, totalMem);
+  if(ierr != HPLMXP_SUCCESS) {
+    (test.kskip)++;
+    HPLMXP_pmat_free(LU);
+    HPLMXP_pmat_free(A);
+    return;
+  }
 
   /* generate fp64 rhs vector and initial guess */
-  HPLMXP_pmatgen_rhs(grid, A);
-  HPLMXP_pmatgen_x(grid, A);
+  ierr = HPLMXP_pmatgen_rhs(grid, A, totalMem);
+  if(ierr != HPLMXP_SUCCESS) {
+    (test.kskip)++;
+    HPLMXP_pmat_free(LU);
+    HPLMXP_pmat_free(A);
+    return;
+  }
+  ierr = HPLMXP_pmatgen_x(grid, A, totalMem);
+  if(ierr != HPLMXP_SUCCESS) {
+    (test.kskip)++;
+    HPLMXP_pmat_free(LU);
+    HPLMXP_pmat_free(A);
+    return;
+  }
+
+#ifdef HPLMXP_VERBOSE_PRINT
+  if((myrow == 0) && (mycol == 0)) {
+    printf("Total device memory use = %g GiBs\n",
+           ((double)totalMem) / (1024 * 1024 * 1024));
+  }
+#endif
 
   /* warm up the GPU to make sure library workspaces are allocated */
-  HPLMXP_WarmupGPU(NB);
+  // HPLMXP_WarmupGPU(NB);
+
+  /* Generate problem */
+  HPLMXP_prandmat(grid, LU);
+  HPLMXP_prandmat_rhs(grid, A);
+  HPLMXP_prandmat_x(grid, A);
+  HIP_CHECK(hipDeviceSynchronize());
 
   /*
    * Solve linear system
@@ -285,8 +306,6 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
       printf("Residual Check: FAILED \n");
 #endif
   }
-
-  ROCBLAS_CHECK(rocblas_destroy_handle(blas_hdl));
 
   HPLMXP_pmat_free(LU);
   HPLMXP_pmat_free(A);

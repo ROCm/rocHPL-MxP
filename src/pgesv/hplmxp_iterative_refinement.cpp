@@ -13,27 +13,10 @@ void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
   fp64_t* b = A.b;
   fp64_t* x = A.x;
 
-  /* memory buffer */
-  fp64_t* r = nullptr;
-  if(hipMalloc(&r, sizeof(fp64_t) * nb * A.nbrow) != hipSuccess) {
-    HPLMXP_pabort(__LINE__,
-                  "HPLMXP_iterative_refinement",
-                  "Memory allocation failed for r workspace.");
-  }
-  fp64_t* v = nullptr;
-  if(hipMalloc(&v, sizeof(fp64_t) * nb * A.nbcol) != hipSuccess) {
-    HPLMXP_pabort(__LINE__,
-                  "HPLMXP_iterative_refinement",
-                  "Memory allocation failed for v workspace.");
-  }
-
-  fp64_t* work = nullptr;
-  if(hipMalloc(&work, (2 * nb * A.nbrow + nb + nb * nb) * sizeof(fp64_t)) !=
-     hipSuccess) {
-    HPLMXP_pabort(__LINE__,
-                  "HPLMXP_iterative_refinement",
-                  "Memory allocation failed for vw.");
-  }
+  /* workspaces */
+  fp64_t* r = LU.work;
+  fp64_t* v = LU.work + nb * LU.nbrow;
+  fp64_t* work = LU.work + nb * LU.nbrow + nb * LU.nbcol;
 
   for(int iter = 0; iter < maxits; ++iter) {
     HPLMXP_pcopy(grid, nb * A.nbrow, nb, b, r);
@@ -67,8 +50,4 @@ void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
     HPLMXP_ptrsvU(grid, LU, r, work);
     HPLMXP_paxpy(grid, nb * A.nbrow, nb, 1.0, r, x);
   }
-
-  HIP_CHECK(hipFree(r));
-  HIP_CHECK(hipFree(v));
-  HIP_CHECK(hipFree(work));
 }

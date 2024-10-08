@@ -101,6 +101,19 @@ void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
   HIP_CHECK(hipEventCreate(&TgemmEnd));
   HIP_CHECK(hipEventCreate(&piv));
 
+
+  /* Create a rocBLAS handle */
+  ROCBLAS_CHECK(rocblas_create_handle(&blas_hdl));
+  ROCBLAS_CHECK(rocblas_set_pointer_mode(blas_hdl, rocblas_pointer_mode_host));
+  ROCBLAS_CHECK(rocblas_set_stream(blas_hdl, computeStream));
+
+#ifdef HPLMXP_ROCBLAS_ALLOW_ATOMICS
+  ROCBLAS_CHECK(rocblas_set_atomics_mode(blas_hdl, rocblas_atomics_allowed));
+#else
+  ROCBLAS_CHECK(
+      rocblas_set_atomics_mode(blas_hdl, rocblas_atomics_not_allowed));
+#endif
+
   rocblas_initialize();
 }
 
@@ -159,6 +172,8 @@ void HPLMXP_WarmupGPU(const int NB) {
 }
 
 void HPLMXP_FreeGPU() {
+  ROCBLAS_CHECK(rocblas_destroy_handle(blas_hdl));
+
   HIP_CHECK(hipEventDestroy(getrf));
   HIP_CHECK(hipEventDestroy(lbcast));
   HIP_CHECK(hipEventDestroy(ubcast));
