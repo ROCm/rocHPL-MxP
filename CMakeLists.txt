@@ -69,7 +69,7 @@ option(HPLMXP_DETAILED_TIMING "Enable detail timers" OFF)
 include(cmake/Dependencies.cmake)
 
 # Setup version
-rocm_setup_version(VERSION 2.0.0)
+rocm_setup_version(VERSION 2.1.0)
 
 # This option only works for make/nmake and the ninja generators, but no reason it shouldn't be on all the time
 # This tells cmake to create a compile_commands.json file that can be used with clang tooling or vim
@@ -96,7 +96,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   list(APPEND CMAKE_HOST_FLAGS "-O0;-g")
 else()
   list(APPEND HIP_HIPCC_FLAGS "-O3 -march=native -ffp-contract=fast -ffast-math -funsafe-math-optimizations")
-  list(APPEND CMAKE_HOST_FLAGS "-O3;-march=native")
+  list(APPEND CMAKE_HOST_FLAGS "-O3;-march=native;-Wno-deprecated-declarations")
 endif()
 
 # GPU arch targets
