@@ -95,8 +95,11 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
                   HPLMXP_T_palg& algo,
                   const int      N,
                   const int      NB);
+void HPLMXP_Warmup(HPLMXP_T_grid&         grid,
+                   HPLMXP_T_palg&         algo,
+                   HPLMXP_T_pmat<fp64_t>& A,
+                   HPLMXP_T_pmat<fp32_t>& LU);
 void HPLMXP_InitGPU(const HPLMXP_T_grid& grid);
-void HPLMXP_WarmupGPU(const int NB);
 void HPLMXP_FreeGPU();
 
 #endif

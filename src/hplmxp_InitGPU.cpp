@@ -117,60 +117,6 @@ void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
   rocblas_initialize();
 }
 
-void HPLMXP_WarmupGPU(const int NB) {
-
-  std::mt19937                     rng(0);
-  std::uniform_real_distribution<> dist(-1., 1.);
-
-  // Make a diagonally dominate matrix
-  fp32_t* work32 = (fp32_t*)malloc(sizeof(fp32_t) * NB * NB);
-  for(int j = 0; j < NB; ++j) {
-    for(int i = 0; i < NB; ++i) { work32[i + j * NB] = dist(rng); }
-    work32[j + j * NB] = NB;
-  }
-
-  fp64_t* work64 = (fp64_t*)malloc(sizeof(fp64_t) * NB * (NB + 1));
-  for(int j = 0; j < NB; ++j) {
-    for(int i = 0; i < NB; ++i) { work64[i + j * NB] = dist(rng); }
-    work64[j + j * NB] = NB;
-  }
-  for(int i = 0; i < NB; ++i) { work64[i + NB * NB] = dist(rng); }
-
-  fp32_t* d_work32 = nullptr;
-  if(hipMalloc((void**)&(d_work32), sizeof(fp32_t) * NB * NB) != hipSuccess) {
-    HPLMXP_pabort(__LINE__,
-                  "HPLMXP_WarmupGPU",
-                  "Device memory allocation failed for warmup workspace.");
-  }
-
-  fp64_t* d_work64 = nullptr;
-  if(hipMalloc((void**)&(d_work64), sizeof(fp64_t) * NB * (NB + 1)) !=
-     hipSuccess) {
-    HPLMXP_pabort(__LINE__,
-                  "HPLMXP_WarmupGPU",
-                  "Device memory allocation failed for warmup workspace.");
-  }
-
-  HIP_CHECK(hipMemcpy(
-      d_work32, work32, sizeof(fp32_t) * NB * NB, hipMemcpyHostToDevice));
-  HIP_CHECK(hipMemcpy(
-      d_work64, work64, sizeof(fp64_t) * NB * (NB + 1), hipMemcpyHostToDevice));
-
-  // Call some rocsovler routines to warm up
-  HPLMXP_getrf(NB, NB, d_work32, NB);
-  HPLMXP_trtriU(NB, d_work32, NB);
-  HPLMXP_trtriL(NB, d_work32, NB);
-
-  // And call some rocblas routines as well
-  HPLMXP_trsvL(NB, d_work64, NB, d_work64 + NB * NB);
-  HPLMXP_trsvU(NB, d_work64, NB, d_work64 + NB * NB);
-
-  HIP_CHECK(hipFree(d_work64));
-  HIP_CHECK(hipFree(d_work32));
-  free(work64);
-  free(work32);
-}
-
 void HPLMXP_FreeGPU() {
   ROCBLAS_CHECK(rocblas_destroy_handle(blas_hdl));
 

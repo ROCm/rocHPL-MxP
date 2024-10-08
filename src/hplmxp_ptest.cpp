@@ -127,7 +127,7 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
 #endif
 
   /* warm up the GPU to make sure library workspaces are allocated */
-  // HPLMXP_WarmupGPU(NB);
+  HPLMXP_Warmup(grid, algo, A, LU);
 
   /* Generate problem */
   HPLMXP_prandmat(grid, LU);
