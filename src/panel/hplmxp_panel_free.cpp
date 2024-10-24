@@ -15,8 +15,8 @@
  */
 #include "hplmxp.hpp"
 
-template<typename T>
-int HPLMXP_pdpanel_free(HPLMXP_T_panel<T>& P) {
+template<typename A_t, typename C_t>
+void HPLMXP_pdpanel_free(HPLMXP_T_panel<A_t, C_t>& P) {
   /*
    * Purpose
    * =======
@@ -42,12 +42,6 @@ int HPLMXP_pdpanel_free(HPLMXP_T_panel<T>& P) {
     HIP_CHECK(hipFree(P.U));
     P.U = nullptr;
   }
-
-  return (HPLMXP_SUCCESS);
 }
 
-template
-int HPLMXP_pdpanel_free(HPLMXP_T_panel<double>& P);
-
-template
-int HPLMXP_pdpanel_free(HPLMXP_T_panel<float>& P);
+template void HPLMXP_pdpanel_free(HPLMXP_T_panel<approx_type_t, compute_type_t>& P);

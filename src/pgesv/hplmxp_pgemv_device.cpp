@@ -108,7 +108,8 @@ static __launch_bounds__(256) __global__
 }
 
 void HPLMXP_pgemv(HPLMXP_T_grid&         grid,
-                  HPLMXP_T_pmat<fp64_t>& A,
+                  HPLMXP_T_pmat<approx_type_t,
+                                compute_type_t>& A,
                   fp64_t                 alpha,
                   fp64_t*                x,
                   fp64_t                 beta,

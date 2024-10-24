@@ -97,3 +97,4 @@ int HPLMXP_bcast(T*           SBUF,
 template int HPLMXP_bcast(double*, int, int, MPI_Comm, HPLMXP_T_TOP top);
 template int HPLMXP_bcast(float*, int, int, MPI_Comm, HPLMXP_T_TOP top);
 template int HPLMXP_bcast(__half*, int, int, MPI_Comm, HPLMXP_T_TOP top);
+template int HPLMXP_bcast(hipblaslt_f8_fnuz*, int, int, MPI_Comm, HPLMXP_T_TOP top);

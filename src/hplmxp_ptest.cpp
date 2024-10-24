@@ -85,54 +85,25 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
   int mycol, myrow, npcol, nprow;
   HPLMXP_grid_info(grid, nprow, npcol, myrow, mycol);
 
-  /* Create an fp64 Matrix */
-  HPLMXP_T_pmat<fp64_t> A;
+  /* Create the problem Matrix */
+  HPLMXP_T_pmat<approx_type_t, compute_type_t> A;
   HPLMXP_pmat_init(grid, N, NB, A);
 
-  /* Create an fp32 proxy matrix */
-  HPLMXP_T_pmat<fp32_t> LU;
-  HPLMXP_pmat_init(grid, N, NB, LU);
-
-  /* generate fp32 matrix on device */
-  size_t totalMem = 0;
-  ierr = HPLMXP_pmatgen(grid, LU, totalMem);
+  /* generate the proxy matrix on device */
+  ierr = HPLMXP_pmatgen(grid, A);
   if(ierr != HPLMXP_SUCCESS) {
     (test.kskip)++;
-    HPLMXP_pmat_free(LU);
     HPLMXP_pmat_free(A);
     return;
   }
-
-  /* generate fp64 rhs vector and initial guess */
-  ierr = HPLMXP_pmatgen_rhs(grid, A, totalMem);
-  if(ierr != HPLMXP_SUCCESS) {
-    (test.kskip)++;
-    HPLMXP_pmat_free(LU);
-    HPLMXP_pmat_free(A);
-    return;
-  }
-  ierr = HPLMXP_pmatgen_x(grid, A, totalMem);
-  if(ierr != HPLMXP_SUCCESS) {
-    (test.kskip)++;
-    HPLMXP_pmat_free(LU);
-    HPLMXP_pmat_free(A);
-    return;
-  }
-
-#ifdef HPLMXP_VERBOSE_PRINT
-  if((myrow == 0) && (mycol == 0)) {
-    printf("Total device memory use = %g GiBs\n",
-           ((double)totalMem) / (1024 * 1024 * 1024));
-  }
-#endif
 
   /* warm up the GPU to make sure library workspaces are allocated */
-  HPLMXP_Warmup(grid, algo, A, LU);
+  HPLMXP_Warmup(grid, algo, A);
 
   for (int it=0;it<algo.its;++it) {
 
     /* Generate problem */
-    HPLMXP_prandmat(grid, LU);
+    HPLMXP_prandmat(grid, A);
     HPLMXP_prandmat_rhs(grid, A);
     HPLMXP_prandmat_x(grid, A);
     HIP_CHECK(hipDeviceSynchronize());
@@ -145,7 +116,7 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
     HPLMXP_TracingPush("FOM Region");
     time(&current_time_start);
     HPLMXP_ptimer(0);
-    HPLMXP_pgesv(grid, algo, A, LU);
+    HPLMXP_pgesv(grid, algo, A);
     HPLMXP_ptimer(0);
     time(&current_time_end);
     HPLMXP_TracingPop("FOM Region");
@@ -312,6 +283,5 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
     }
   }
 
-  HPLMXP_pmat_free(LU);
   HPLMXP_pmat_free(A);
 }

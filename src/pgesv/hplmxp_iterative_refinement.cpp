@@ -2,8 +2,8 @@
 
 void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
                                  HPLMXP_T_palg&         algo,
-                                 HPLMXP_T_pmat<fp64_t>& A,
-                                 HPLMXP_T_pmat<fp32_t>& LU) {
+                                 HPLMXP_T_pmat<approx_type_t,
+                                               compute_type_t>& A) {
   // do IR with approximated LU factors in p and the accurate initial matrix
   int const n  = A.n;
   int const nb = A.nb;
@@ -14,9 +14,9 @@ void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
   fp64_t* x = A.x;
 
   /* workspaces */
-  fp64_t* r = LU.work;
-  fp64_t* v = LU.work + nb * LU.nbrow;
-  fp64_t* work = LU.work + nb * LU.nbrow + nb * LU.nbcol;
+  fp64_t* r = A.work;
+  fp64_t* v = A.work + nb * A.nbrow;
+  fp64_t* work = A.work + nb * A.nbrow + nb * A.nbcol;
 
   for(int iter = 0; iter < maxits; ++iter) {
     HPLMXP_pcopy(grid, nb * A.nbrow, nb, b, r);
@@ -46,8 +46,8 @@ void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
     if(A.res < algo.thrsh || iter == maxits - 1) break;
 
     // x_1 = x_0 + (LU)^{-1} r
-    HPLMXP_ptrsvL(grid, LU, r, work);
-    HPLMXP_ptrsvU(grid, LU, r, work);
-    HPLMXP_paxpy(grid, nb * A.nbrow, nb, 1.0, r, x);
+    HPLMXP_ptrsvL(grid, A, r, work);
+    HPLMXP_ptrsvU(grid, A, r, work);
+    HPLMXP_paxpy(grid, nb * A.nbrow, nb, fp64_t{1.0}, r, x);
   }
 }

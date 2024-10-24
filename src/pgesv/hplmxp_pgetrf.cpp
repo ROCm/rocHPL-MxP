@@ -16,9 +16,10 @@
 
 #include "hplmxp.hpp"
 
-void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_palg&         algo,
-                   HPLMXP_T_pmat<fp32_t>& A) {
+void HPLMXP_pgetrf(HPLMXP_T_grid&                 grid,
+                   HPLMXP_T_palg&                 algo,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>& A) {
   /*
    * Purpose
    * =======
@@ -44,7 +45,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
    * ---------------------------------------------------------------------
    */
 
-  fp32_t*   Ap      = A.A;
+  approx_type_t* Ap = A.A;
   int const N       = A.n;
   int const b       = A.nb;
   int const nblocks = N / b;
@@ -59,9 +60,11 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
 
   const int ldpiv = b;
 
-  const fp32_t one   = 1.0;
-  const fp32_t alpha = -1.0;
-  const fp32_t beta  = 1.0;
+  using T = gemmTypes<compute_type_t>::computeType;
+
+  const T one   = 1.0;
+  const T alpha = -1.0;
+  const T beta  = 1.0;
 
   int i = 0, j = 0;
   int ip1 = i + (((1 % grid.nprow) == grid.myrow) ? 1 : 0);
@@ -109,8 +112,8 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
 
     double stepStart = MPI_Wtime();
 
-    HPLMXP_T_panel<fp32_t>& prev = A.panels[k % 2];
-    HPLMXP_T_panel<fp32_t>& next = A.panels[(k + 1) % 2];
+    HPLMXP_T_panel<approx_type_t, compute_type_t>& prev = A.panels[k % 2];
+    HPLMXP_T_panel<approx_type_t, compute_type_t>& next = A.panels[(k + 1) % 2];
 
     int const rootrow = k % grid.nprow;
     int const rootcol = k % grid.npcol;
@@ -197,7 +200,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
                     next.ldl,
                     A.pivU,
                     ldpiv,
-                    fp32_t{0.0},
+                    T{0.0},
                     Mptr(Ap, ip1 * b, j * b, lda),
                     lda);
 
@@ -256,7 +259,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
                     ldpiv,
                     next.U,
                     next.ldu,
-                    fp32_t{0.0},
+                    T{0.0},
                     Mptr(Ap, i * b, jp1 * b, lda),
                     lda);
 

@@ -98,6 +98,116 @@ __launch_bounds__(BLOCK_DIM) __global__
   }
 }
 
+union fp32or8x4 {
+  float  fp32;
+  hipblaslt_f8_fnuz fp8[4];
+};
+
+// Specialization for converting from float to hipblaslt_f8_fnuz
+template <>
+__launch_bounds__(BLOCK_DIM) __global__
+    void HPLMXP_lacpyU_kernel(const int M,
+                              const int N,
+                              const float* __restrict__ A,
+                              const int LDA,
+                              hipblaslt_f8_fnuz* __restrict__ B,
+                              const int LDB) {
+
+  const int I = threadIdx.x + blockIdx.x * BLOCK_DIM;
+  const int J = blockIdx.y;
+
+  if(4 * blockIdx.x * BLOCK_DIM > J) return;
+
+  const bool complete_block = ((J + 1) / (4 * BLOCK_DIM) != blockIdx.x);
+
+  const float* __restrict__ Aj = A + J * static_cast<size_t>(LDA);
+
+  if(complete_block) {
+    // Make the compiler emit dwordx2 load/stores
+    float* __restrict__ Bj =
+        reinterpret_cast<float*>(B + J * static_cast<size_t>(LDB));
+
+    fp32or8x4 out;
+    out.fp8[0] = hipblaslt_f8_fnuz{Aj[4 * I + 0]};
+    out.fp8[1] = hipblaslt_f8_fnuz{Aj[4 * I + 1]};
+    out.fp8[2] = hipblaslt_f8_fnuz{Aj[4 * I + 2]};
+    out.fp8[3] = hipblaslt_f8_fnuz{Aj[4 * I + 3]};
+
+    Bj[I] = out.fp32;
+  } else {
+    hipblaslt_f8_fnuz* __restrict__ Bj = B + J * static_cast<size_t>(LDB);
+
+    if(4 * I + 0 <= J) Bj[4 * I + 0] = hipblaslt_f8_fnuz{Aj[4 * I + 0]};
+    if(4 * I + 1 <= J) Bj[4 * I + 1] = hipblaslt_f8_fnuz{Aj[4 * I + 1]};
+    if(4 * I + 2 <= J) Bj[4 * I + 2] = hipblaslt_f8_fnuz{Aj[4 * I + 2]};
+    if(4 * I + 3 <= J) Bj[4 * I + 3] = hipblaslt_f8_fnuz{Aj[4 * I + 3]};
+  }
+}
+
+template <>
+__launch_bounds__(BLOCK_DIM) __global__
+    void HPLMXP_lacpyU_kernel(const int M,
+                              const int N,
+                              const hipblaslt_f8_fnuz* __restrict__ A,
+                              const int LDA,
+                              double* __restrict__ B,
+                              const int LDB) {
+
+  const int I = threadIdx.x + blockIdx.x * BLOCK_DIM;
+  const int J = blockIdx.y;
+
+  if(4 * blockIdx.x * BLOCK_DIM > J) return;
+
+  const bool complete_block = ((J + 1) / (4 * BLOCK_DIM) != blockIdx.x);
+
+  const hipblaslt_f8_fnuz* __restrict__ Aj = A + J * static_cast<size_t>(LDA);
+  double* __restrict__ Bj       = B + J * static_cast<size_t>(LDB);
+
+  if(complete_block) {
+    Bj[4 * I + 0] = float{Aj[4 * I + 0]};
+    Bj[4 * I + 1] = float{Aj[4 * I + 1]};
+    Bj[4 * I + 2] = float{Aj[4 * I + 2]};
+    Bj[4 * I + 3] = float{Aj[4 * I + 3]};
+  } else {
+    if(4 * I + 0 <= J) Bj[4 * I + 0] = float{Aj[4 * I + 0]};
+    if(4 * I + 1 <= J) Bj[4 * I + 1] = float{Aj[4 * I + 1]};
+    if(4 * I + 2 <= J) Bj[4 * I + 2] = float{Aj[4 * I + 2]};
+    if(4 * I + 3 <= J) Bj[4 * I + 3] = float{Aj[4 * I + 3]};
+  }
+}
+
+template <>
+__launch_bounds__(BLOCK_DIM) __global__
+    void HPLMXP_lacpyU_kernel(const int M,
+                              const int N,
+                              const hipblaslt_f8_fnuz* __restrict__ A,
+                              const int LDA,
+                              float* __restrict__ B,
+                              const int LDB) {
+
+  const int I = threadIdx.x + blockIdx.x * BLOCK_DIM;
+  const int J = blockIdx.y;
+
+  if(4 * blockIdx.x * BLOCK_DIM > J) return;
+
+  const bool complete_block = ((J + 1) / (4 * BLOCK_DIM) != blockIdx.x);
+
+  const hipblaslt_f8_fnuz* __restrict__ Aj = A + J * static_cast<size_t>(LDA);
+  float* __restrict__ Bj       = B + J * static_cast<size_t>(LDB);
+
+  if(complete_block) {
+    Bj[4 * I + 0] = float{Aj[4 * I + 0]};
+    Bj[4 * I + 1] = float{Aj[4 * I + 1]};
+    Bj[4 * I + 2] = float{Aj[4 * I + 2]};
+    Bj[4 * I + 3] = float{Aj[4 * I + 3]};
+  } else {
+    if(4 * I + 0 <= J) Bj[4 * I + 0] = float{Aj[4 * I + 0]};
+    if(4 * I + 1 <= J) Bj[4 * I + 1] = float{Aj[4 * I + 1]};
+    if(4 * I + 2 <= J) Bj[4 * I + 2] = float{Aj[4 * I + 2]};
+    if(4 * I + 3 <= J) Bj[4 * I + 3] = float{Aj[4 * I + 3]};
+  }
+}
+
 template <typename T, typename U>
 void HPLMXP_lacpyU(const int M,
                    const int N,
@@ -159,39 +269,11 @@ template void HPLMXP_lacpyU(const int     m,
                             double*       B,
                             const int     ldb);
 
-template void HPLMXP_lacpyU(const int     m,
-                            const int     n,
-                            const double* A,
-                            const int     lda,
-                            float*        B,
-                            const int     ldb);
-
-template void HPLMXP_lacpyU(const int     m,
-                            const int     n,
-                            const double* A,
-                            const int     lda,
-                            __half*       B,
-                            const int     ldb);
-
 template void HPLMXP_lacpyU(const int    m,
                             const int    n,
                             const float* A,
                             const int    lda,
                             double*      B,
-                            const int    ldb);
-
-template void HPLMXP_lacpyU(const int    m,
-                            const int    n,
-                            const float* A,
-                            const int    lda,
-                            float*       B,
-                            const int    ldb);
-
-template void HPLMXP_lacpyU(const int    m,
-                            const int    n,
-                            const float* A,
-                            const int    lda,
-                            __half*      B,
                             const int    ldb);
 
 template void HPLMXP_lacpyU(const int     m,
@@ -203,14 +285,28 @@ template void HPLMXP_lacpyU(const int     m,
 
 template void HPLMXP_lacpyU(const int     m,
                             const int     n,
-                            const __half* A,
+                            const hipblaslt_f8_fnuz* A,
                             const int     lda,
-                            float*        B,
+                            double*       B,
                             const int     ldb);
 
-template void HPLMXP_lacpyU(const int     m,
-                            const int     n,
+template void HPLMXP_lacpyU(const int    m,
+                            const int    n,
+                            const float* A,
+                            const int    lda,
+                            float*       B,
+                            const int    ldb);
+
+template void HPLMXP_lacpyU(const int    m,
+                            const int    n,
                             const __half* A,
-                            const int     lda,
-                            __half*       B,
-                            const int     ldb);
+                            const int    lda,
+                            float*      B,
+                            const int    ldb);
+
+template void HPLMXP_lacpyU(const int    m,
+                            const int    n,
+                            const hipblaslt_f8_fnuz* A,
+                            const int    lda,
+                            float*      B,
+                            const int    ldb);

@@ -190,6 +190,101 @@ __launch_bounds__(BLOCK_DIM_X* BLOCK_DIM_Y) __global__
   }
 }
 
+union fp32or8x4 {
+  float  fp32;
+  hipblaslt_f8_fnuz fp8[8];
+};
+
+// Specialization for converting from float to hipblaslt_f8_fnuz
+template <int BLOCK_DIM_X, int BLOCK_DIM_Y, int TILE_DIM_X, int TILE_DIM_Y>
+__launch_bounds__(BLOCK_DIM_X* BLOCK_DIM_Y) __global__
+    void HPLMXP_latcpy_kernel_f8(const int M,
+                                   const int N,
+                                   const float* __restrict__ A,
+                                   const int LDA,
+                                   hipblaslt_f8_fnuz* __restrict__ B,
+                                   const int LDB) {
+
+  __shared__ hipblaslt_f8_fnuz s_tile[TILE_DIM_X][TILE_DIM_Y];
+
+  const bool complete_block =
+      (M / (TILE_DIM_X) != blockIdx.y) && (N / (TILE_DIM_Y) != blockIdx.x);
+
+  if(complete_block) {
+
+    int si = (TILE_DIM_Y / BLOCK_DIM_X) * threadIdx.x;
+    int sj = (TILE_DIM_X / BLOCK_DIM_Y) * threadIdx.y;
+    int I  = sj + blockIdx.y * TILE_DIM_X;
+    int J  = si + blockIdx.x * TILE_DIM_Y;
+
+    const float* __restrict__ Aj = A + J + I * static_cast<size_t>(LDA);
+
+    for(int j = 0; j < (TILE_DIM_X / BLOCK_DIM_Y); ++j) {
+      for(int i = 0; i < (TILE_DIM_Y / BLOCK_DIM_X); ++i) {
+        s_tile[sj + j][si + i] = hipblaslt_f8_fnuz{Aj[i + j * LDA]};
+      }
+    }
+
+    si = (TILE_DIM_X / BLOCK_DIM_X) * threadIdx.x;
+    sj = (TILE_DIM_Y / BLOCK_DIM_Y) * threadIdx.y;
+    I  = si + blockIdx.y * TILE_DIM_X;
+    J  = sj + blockIdx.x * TILE_DIM_Y;
+
+    hipblaslt_f8_fnuz* __restrict__ Bj = B + I + J * static_cast<size_t>(LDB);
+
+    __syncthreads();
+
+    fp32or8x4 out[(TILE_DIM_Y / BLOCK_DIM_Y)][(TILE_DIM_X / BLOCK_DIM_X) / 4];
+
+    for(int j = 0; j < (TILE_DIM_Y / BLOCK_DIM_Y); ++j) {
+      for(int i = 0; i < (TILE_DIM_X / BLOCK_DIM_X) / 4; ++i) {
+        out[j][i].fp8[0] = s_tile[si + 4 * i + 0][sj + j];
+        out[j][i].fp8[1] = s_tile[si + 4 * i + 1][sj + j];
+        out[j][i].fp8[2] = s_tile[si + 4 * i + 2][sj + j];
+        out[j][i].fp8[3] = s_tile[si + 4 * i + 3][sj + j];
+      }
+    }
+
+    // Make the compiler emit dwordx2 load/stores
+    for(int j = 0; j < (TILE_DIM_Y / BLOCK_DIM_Y); ++j) {
+      for(int i = 0; i < (TILE_DIM_X / BLOCK_DIM_X) / 4; ++i) {
+        ((float*)(Bj + 4 * i + j * LDB))[0] = out[j][i].fp32;
+      }
+    }
+
+  } else {
+
+    int si = (TILE_DIM_Y / BLOCK_DIM_X) * threadIdx.x;
+    int sj = (TILE_DIM_X / BLOCK_DIM_Y) * threadIdx.y;
+    int I  = sj + blockIdx.y * TILE_DIM_X;
+    int J  = si + blockIdx.x * TILE_DIM_Y;
+
+    const float* __restrict__ Aj = A + J + I * static_cast<size_t>(LDA);
+
+    for(int j = 0; j < (TILE_DIM_X / BLOCK_DIM_Y); ++j) {
+      for(int i = 0; i < (TILE_DIM_Y / BLOCK_DIM_X); ++i) {
+        if((J + i < N) && (I + j < M)) s_tile[sj + j][si + i] = hipblaslt_f8_fnuz{Aj[i + j * LDA]};
+      }
+    }
+
+    si = (TILE_DIM_X / BLOCK_DIM_X) * threadIdx.x;
+    sj = (TILE_DIM_Y / BLOCK_DIM_Y) * threadIdx.y;
+    I  = si + blockIdx.y * TILE_DIM_X;
+    J  = sj + blockIdx.x * TILE_DIM_Y;
+
+    hipblaslt_f8_fnuz* __restrict__ Bj = B + I + J * static_cast<size_t>(LDB);
+
+    __syncthreads();
+
+    for(int j = 0; j < (TILE_DIM_Y / BLOCK_DIM_Y); ++j) {
+      for(int i = 0; i < (TILE_DIM_X / BLOCK_DIM_X); ++i) {
+        if((I + i < M) && (J + j < N)) Bj[i + j * LDB] = s_tile[si + i][sj + j];
+      }
+    }
+  }
+}
+
+
 template <typename T, typename U>
 void HPLMXP_latcpy(const int M,
                    const int N,
@@ -274,25 +369,36 @@ void HPLMXP_latcpy(const int    M,
   HIP_CHECK(hipGetLastError());
 }
 
+// Specialization for converting from float to hipblaslt_f8_fnuz
+template <>
+void HPLMXP_latcpy(const int    M,
+                   const int    N,
+                   const float* A,
+                   const int    LDA,
+                   hipblaslt_f8_fnuz*      B,
+                   const int    LDB) {
+
+  if((M <= 0) || (N <= 0)) return;
+
+  constexpr int BLOCK_DIM_X = 16;
+  constexpr int BLOCK_DIM_Y = 8;
+  constexpr int TILE_DIM_X  = 64;
+  constexpr int TILE_DIM_Y  = 64;
+
+  dim3 grid_size((N + TILE_DIM_Y - 1) / (TILE_DIM_Y),
+                 (M + TILE_DIM_X - 1) / (TILE_DIM_X));
+  dim3 block_size(BLOCK_DIM_X, BLOCK_DIM_Y);
+
+  HPLMXP_latcpy_kernel_f8<BLOCK_DIM_X, BLOCK_DIM_Y, TILE_DIM_X, TILE_DIM_Y>
+      <<<grid_size, block_size, 0, computeStream>>>(M, N, A, LDA, B, LDB);
+  HIP_CHECK(hipGetLastError());
+}
+
 template void HPLMXP_latcpy(const int     m,
                             const int     n,
                             const double* A,
                             const int     lda,
                             double*       B,
-                            const int     ldb);
-
-template void HPLMXP_latcpy(const int     m,
-                            const int     n,
-                            const double* A,
-                            const int     lda,
-                            float*        B,
-                            const int     ldb);
-
-template void HPLMXP_latcpy(const int     m,
-                            const int     n,
-                            const double* A,
-                            const int     lda,
-                            __half*       B,
                             const int     ldb);
 
 template void HPLMXP_latcpy(const int    m,
@@ -307,4 +413,11 @@ template void HPLMXP_latcpy(const int     m,
                             const __half* A,
                             const int     lda,
                             __half*       B,
+                            const int     ldb);
+
+template void HPLMXP_latcpy(const int     m,
+                            const int     n,
+                            const hipblaslt_f8_fnuz* A,
+                            const int     lda,
+                            hipblaslt_f8_fnuz*       B,
                             const int     ldb);

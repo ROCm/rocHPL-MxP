@@ -18,6 +18,10 @@
 #define fp64_t double
 #define fp32_t float
 #define fp16_t __half
+#define fp8_t  hipblaslt_f8_fnuz
+
+#define approx_type_t  fp32_t
+#define compute_type_t fp16_t
 
 //#define HPLMXP_USE_COLLECTIVES 1
 

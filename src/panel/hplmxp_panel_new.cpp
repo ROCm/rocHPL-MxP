@@ -32,22 +32,15 @@ static int deviceMalloc(HPLMXP_T_grid&  grid,
   }
 }
 
-template<typename T>
-int HPLMXP_pdpanel_new(HPLMXP_T_grid&      grid,
-                       HPLMXP_T_pmat<T>&   A,
-                       const int           N,
-                       const int           NB,
-                       const int           IA,
-                       const int           JA,
-                       const int           II,
-                       const int           JJ,
-                       HPLMXP_T_panel<T>&  P,
-                       size_t&             totalMem) {
+template<typename A_t, typename C_t>
+int HPLMXP_pdpanel_new(HPLMXP_T_grid&                  grid,
+                       HPLMXP_T_pmat<A_t, C_t>&   A,
+                       HPLMXP_T_panel<A_t, C_t>&       P) {
   /*
    * Purpose
    * =======
    *
-   * HPLMXP_pdpanel_new creates and initializes a panel data structure.
+   * HPLMXP_pdpanel_new creates a panel data structure.
    *
    *
    * Arguments
@@ -61,60 +54,36 @@ int HPLMXP_pdpanel_new(HPLMXP_T_grid&      grid,
    *         On entry, A points to the data structure containing the local
    *         array information.
    *
-   * N       (local input)                 const int
-   *         On entry,  N  specifies  the  global number of columns of the
-   *         panel and trailing submatrix. N must be at least zero.
-   *
-   * NB      (global input)                const int
-   *         On entry, NB specifies is the number of columns of the panel.
-   *         NB must be at least zero.
-   *
-   * IA      (global input)                const int
-   *         On entry,  IA  is  the global row index identifying the panel
-   *         and trailing submatrix. IA must be at least zero.
-   *
-   * JA      (global input)                const int
-   *         On entry, JA is the global column index identifying the panel
-   *         and trailing submatrix. JA must be at least zero.
-   *
-   * II      (local input)                 const int
-   *         On entry, II  specifies the  local  starting  row index of the
-   *         submatrix.
-   *
-   * JJ      (local input)                 const int
-   *         On entry, JJ  specifies the local starting column index of the
-   *         submatrix.
-   *
-   * PANEL   (local input/output)          HPLMXP_T_panel &
+   * P       (local input/output)          HPLMXP_T_panel &
    *         On entry,  PANEL  points to the data structure containing the
    *         panel information.
    *
    * ---------------------------------------------------------------------
    */
 
-  P.ldl = (((sizeof(fp16_t) * A.mp + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
-  size_t numbytes = sizeof(fp16_t) * A.nb * P.ldl;
-  totalMem += numbytes;
+  P.ldl = (((sizeof(C_t) * A.mp + 767) / 1024) * 1024 + 256) / sizeof(C_t);
+  size_t numbytes = sizeof(C_t) * A.nb * P.ldl;
+  A.totalMem += numbytes;
   if(deviceMalloc(grid, reinterpret_cast<void**>(&(P.L)), numbytes) != HPLMXP_SUCCESS) {
     if(grid.iam == 0)
       HPLMXP_pwarn(stderr,
                    __LINE__,
                    "HPLMXP_pdpanel_new",
                    "Device memory allocation failed for L. Requested %g GiBs total. Test Skiped.",
-                   ((double)totalMem) / (1024 * 1024 * 1024));
+                   ((double)A.totalMem) / (1024 * 1024 * 1024));
     return HPLMXP_FAILURE;
   }
 
-  P.ldu = (((sizeof(fp16_t) * A.nq + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
-  numbytes = sizeof(fp16_t) * A.nb * P.ldu;
-  totalMem += numbytes;
+  P.ldu = (((sizeof(C_t) * A.nq + 767) / 1024) * 1024 + 256) / sizeof(C_t);
+  numbytes = sizeof(C_t) * A.nb * P.ldu;
+  A.totalMem += numbytes;
   if(deviceMalloc(grid, reinterpret_cast<void**>(&(P.U)), numbytes) != HPLMXP_SUCCESS) {
     if(grid.iam == 0)
       HPLMXP_pwarn(stderr,
                    __LINE__,
                    "HPLMXP_pdpanel_new",
                    "Device memory allocation failed for U. Requested %g GiBs total. Test Skiped.",
-                   ((double)totalMem) / (1024 * 1024 * 1024));
+                   ((double)A.totalMem) / (1024 * 1024 * 1024));
     return HPLMXP_FAILURE;
   }
 
@@ -123,24 +92,7 @@ int HPLMXP_pdpanel_new(HPLMXP_T_grid&      grid,
 
 template
 int HPLMXP_pdpanel_new(HPLMXP_T_grid&           grid,
-                       HPLMXP_T_pmat<double>&   A,
-                       const int                N,
-                       const int                NB,
-                       const int                IA,
-                       const int                JA,
-                       const int                II,
-                       const int                JJ,
-                       HPLMXP_T_panel<double>&  P,
-                       size_t&                  totalMem);
-
-template
-int HPLMXP_pdpanel_new(HPLMXP_T_grid&          grid,
-                       HPLMXP_T_pmat<float>&   A,
-                       const int               N,
-                       const int               NB,
-                       const int               IA,
-                       const int               JA,
-                       const int               II,
-                       const int               JJ,
-                       HPLMXP_T_panel<float>&  P,
-                       size_t&                 totalMem);
+                       HPLMXP_T_pmat<approx_type_t,
+                                     compute_type_t>&   A,
+                       HPLMXP_T_panel<approx_type_t,
+                                      compute_type_t>&  P);

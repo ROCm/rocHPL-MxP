@@ -69,9 +69,9 @@ find_package(rocblas REQUIRED)
 
 get_target_property(rocblas_LIBRARIES roc::rocblas IMPORTED_LOCATION_RELEASE)
 
-message("-- rocBLAS version:      ${rocblas_VERSION}")
-message("-- rocBLAS include dirs: ${rocblas_INCLUDE_DIRS}")
-message("-- rocBLAS libraries:    ${rocblas_LIBRARIES}")
+message("-- rocBLAS version:        ${rocblas_VERSION}")
+message("-- rocBLAS include dirs:   ${rocblas_INCLUDE_DIRS}")
+message("-- rocBLAS libraries:      ${rocblas_LIBRARIES}")
 
 get_filename_component(ROCBLAS_LIB_PATH ${rocblas_LIBRARIES} DIRECTORY)
 
@@ -85,6 +85,28 @@ message("-- rocSOLVER include dirs: ${rocsolver_INCLUDE_DIRS}")
 message("-- rocSOLVER libraries:    ${rocsolver_LIBRARIES}")
 
 get_filename_component(ROCSOLVER_LIB_PATH ${rocsolver_LIBRARIES} DIRECTORY)
+
+# hipblaslt
+find_package(hipblas REQUIRED)
+
+get_target_property(hipblas_LIBRARIES roc::hipblas IMPORTED_LOCATION_RELEASE)
+
+message("-- hipBLAS version:        ${hipblas_VERSION}")
+message("-- hipBLAS include dirs:   ${hipblas_INCLUDE_DIRS}")
+message("-- hipBLAS libraries:      ${hipblas_LIBRARIES}")
+
+get_filename_component(HIPBLAS_LIB_PATH ${hipblas_LIBRARIES} DIRECTORY)
+
+# hipblaslt
+find_package(hipblaslt REQUIRED)
+
+get_target_property(hipblaslt_LIBRARIES roc::hipblaslt IMPORTED_LOCATION_RELEASE)
+
+message("-- hipBLASLt version:      ${hipblaslt_VERSION}")
+message("-- hipBLASLt include dirs: ${hipblaslt_INCLUDE_DIRS}")
+message("-- hipBLASLt libraries:    ${hipblaslt_LIBRARIES}")
+
+get_filename_component(HIPBLASLT_LIB_PATH ${hipblaslt_LIBRARIES} DIRECTORY)
 
 # ROCm cmake package
 find_package(ROCM QUIET CONFIG PATHS ${CMAKE_PREFIX_PATH})

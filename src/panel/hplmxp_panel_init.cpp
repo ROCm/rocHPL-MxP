@@ -16,16 +16,16 @@
 
 #include "hplmxp.hpp"
 
-template <typename T>
-void HPLMXP_pdpanel_init(HPLMXP_T_grid&      grid,
-                         HPLMXP_T_pmat<T>&   A,
-                         const int           N,
-                         const int           NB,
-                         const int           IA,
-                         const int           JA,
-                         const int           II,
-                         const int           JJ,
-                         HPLMXP_T_panel<T>&  P) {
+template <typename A_t, typename C_t>
+void HPLMXP_pdpanel_init(HPLMXP_T_grid&                  grid,
+                         HPLMXP_T_pmat<A_t, C_t>&   A,
+                         const int                       N,
+                         const int                       NB,
+                         const int                       IA,
+                         const int                       JA,
+                         const int                       II,
+                         const int                       JJ,
+                         HPLMXP_T_panel<A_t, C_t>&       P) {
   /*
    * Purpose
    * =======
@@ -76,7 +76,6 @@ void HPLMXP_pdpanel_init(HPLMXP_T_grid&      grid,
    */
 
   P.grid = &grid; /* ptr to the process grid */
-  P.pmat = &A;    /* ptr to the local array info */
 
   /* ptr to trailing part of A */
   P.A = Mptr(A.A, II, JJ, A.ld);
@@ -99,28 +98,19 @@ void HPLMXP_pdpanel_init(HPLMXP_T_grid&      grid,
   P.prow            = icurrow; /* proc row owning 1st row of trailing A */
   P.pcol            = icurcol; /* proc col owning 1st col of trailing A */
 
-  P.ldl = (((sizeof(fp16_t) * P.mp + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
-  P.ldu = (((sizeof(fp16_t) * P.nq + 767) / 1024) * 1024 + 256) / sizeof(fp16_t);
+  P.ldl = (((sizeof(C_t) * P.mp + 767) / 1024) * 1024 + 256) / sizeof(C_t);
+  P.ldu = (((sizeof(C_t) * P.nq + 767) / 1024) * 1024 + 256) / sizeof(C_t);
 }
 
 template
-void HPLMXP_pdpanel_init(HPLMXP_T_grid&          grid,
-                         HPLMXP_T_pmat<double>&  A,
-                         const int               N,
-                         const int               NB,
-                         const int               IA,
-                         const int               JA,
-                         const int               II,
-                         const int               JJ,
-                         HPLMXP_T_panel<double>& P);
-
-template
-void HPLMXP_pdpanel_init(HPLMXP_T_grid&          grid,
-                         HPLMXP_T_pmat<float>&   A,
-                         const int               N,
-                         const int               NB,
-                         const int               IA,
-                         const int               JA,
-                         const int               II,
-                         const int               JJ,
-                         HPLMXP_T_panel<float>&  P);
+void HPLMXP_pdpanel_init(HPLMXP_T_grid&                  grid,
+                         HPLMXP_T_pmat<approx_type_t,
+                                       compute_type_t>&  A,
+                         const int                       N,
+                         const int                       NB,
+                         const int                       IA,
+                         const int                       JA,
+                         const int                       II,
+                         const int                       JJ,
+                         HPLMXP_T_panel<approx_type_t,
+                                        compute_type_t>& P);

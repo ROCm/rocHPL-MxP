@@ -18,6 +18,8 @@
 
 #include "rocblas/rocblas.h"
 #include "rocsolver/rocsolver.h"
+#include "hipblas/hipblas.h"
+#include "hipblaslt/hipblaslt.h"
 
 #define HIP_CHECK(val) hipCheck((val), #val, __FILE__, __LINE__)
 inline void hipCheck(hipError_t        err,
@@ -52,18 +54,53 @@ inline void rocBLASCheck(rocblas_status    err,
   }
 }
 
-extern rocblas_handle blas_hdl;
-extern hipStream_t    computeStream;
-extern rocblas_int*   blas_info;
+#define HIPBLAS_CHECK(val) hipBLASCheck((val), #val, __FILE__, __LINE__)
+inline void hipBLASCheck(hipblasStatus_t   err,
+                         const char* const func,
+                         const char* const file,
+                         const int         line) {
+  if(err != HIPBLAS_STATUS_SUCCESS) {
+    fprintf(stderr,
+            "Error: hipblas error in file %s, line %d, error code: %s, %s\n",
+            file,
+            line,
+            hipblasStatusToString(err),
+            func);
+    exit(err);
+  }
+}
+
+extern rocblas_handle    blas_hdl;
+extern hipblasLtHandle_t hipblaslt_handle;
+extern hipStream_t       computeStream;
+extern rocblas_int*      blas_info;
+
+extern hipblasLtMatrixLayout_t a_layout;
+extern hipblasLtMatrixLayout_t b_layout;
+extern hipblasLtMatrixLayout_t c_layout;
+
+extern hipblasLtMatmulDesc_t            matmul64;
+extern hipblasLtMatmulDesc_t            matmul32;
+extern hipblasLtMatmulPreference_t      pref;
+extern hipblasLtMatmulHeuristicResult_t heuristicResult;
 
 extern hipEvent_t getrf, lbcast, ubcast;
 extern hipEvent_t piv;
-extern hipEvent_t DgemmStart, DgemmEnd, LgemmStart, LgemmEnd, UgemmStart,
-    UgemmEnd, TgemmStart, TgemmEnd;
+extern hipEvent_t DgemmStart, DgemmEnd;
+extern hipEvent_t LgemmStart, LgemmEnd;
+extern hipEvent_t UgemmStart, UgemmEnd;
+extern hipEvent_t TgemmStart, TgemmEnd;
 
 #define REDUCTION_SCRATCH_SIZE 512
 extern fp64_t* reduction_scratch;
 extern fp64_t* h_reduction_scratch;
+
+template <typename T>
+struct gemmTypes { using computeType = fp32_t; };
+
+template <>
+struct gemmTypes<fp64_t> { using computeType = fp64_t; };
+
 
 template <typename T, typename U>
 void HPLMXP_gemv(const int m,
@@ -108,17 +145,17 @@ void HPLMXP_trsmL(const int m,
                   T*        b,
                   const int ldb);
 
-template <typename T, typename U>
-void HPLMXP_gemmNT(const int m,
-                   const int n,
-                   const int k,
-                   const T   alpha,
-                   const U*  a,
-                   const int lda,
-                   const U*  b,
-                   const int ldb,
-                   const T   beta,
-                   T*        c,
-                   const int ldc);
+template <typename AB_type, typename C_type, typename compute_type>
+void HPLMXP_gemmNT(const int            m,
+                   const int            n,
+                   const int            k,
+                   const compute_type   alpha,
+                   const AB_type*       a,
+                   const int            lda,
+                   const AB_type*       b,
+                   const int            ldb,
+                   const compute_type   beta,
+                         C_type*        c,
+                   const int            ldc);
 
 #endif

@@ -11,16 +11,28 @@
 #include "hplmxp.hpp"
 #include <random>
 
-rocblas_handle blas_hdl;
+rocblas_handle    blas_hdl;
+hipblasLtHandle_t hipblaslt_handle;
 hipStream_t    computeStream;
 rocblas_int*   blas_info;
 fp64_t*        reduction_scratch;
 fp64_t*        h_reduction_scratch;
 
+hipblasLtMatrixLayout_t a_layout;
+hipblasLtMatrixLayout_t b_layout;
+hipblasLtMatrixLayout_t c_layout;
+
+hipblasLtMatmulDesc_t            matmul32;
+hipblasLtMatmulDesc_t            matmul64;
+hipblasLtMatmulPreference_t      pref;
+hipblasLtMatmulHeuristicResult_t heuristicResult;
+
 hipEvent_t getrf, lbcast, ubcast;
 hipEvent_t piv;
-hipEvent_t DgemmStart, DgemmEnd, LgemmStart, LgemmEnd, UgemmStart, UgemmEnd,
-    TgemmStart, TgemmEnd;
+hipEvent_t DgemmStart, DgemmEnd;
+hipEvent_t LgemmStart, LgemmEnd;
+hipEvent_t UgemmStart, UgemmEnd;
+hipEvent_t TgemmStart, TgemmEnd;
 
 static char host_name[MPI_MAX_PROCESSOR_NAME];
 
@@ -115,6 +127,23 @@ void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
 #endif
 
   rocblas_initialize();
+
+  HIPBLAS_CHECK(hipblasLtCreate(&hipblaslt_handle));
+
+  HIPBLAS_CHECK(hipblasLtMatrixLayoutCreate(&a_layout, HIP_R_16F, 1, 1, 1));
+  HIPBLAS_CHECK(hipblasLtMatrixLayoutCreate(&b_layout, HIP_R_16F, 1, 1, 1));
+  HIPBLAS_CHECK(hipblasLtMatrixLayoutCreate(&c_layout, HIP_R_32F, 1, 1, 1));
+
+  HIPBLAS_CHECK(hipblasLtMatmulDescCreate(&matmul32, HIPBLAS_COMPUTE_32F, HIP_R_32F));
+  HIPBLAS_CHECK(hipblasLtMatmulDescCreate(&matmul64, HIPBLAS_COMPUTE_64F, HIP_R_64F));
+
+  // Set User Preference attributes
+  int64_t max_workspace_size = 0;
+  HIPBLAS_CHECK(hipblasLtMatmulPreferenceCreate(&pref));
+  HIPBLAS_CHECK(hipblasLtMatmulPreferenceSetAttribute(pref,
+                                                     HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
+                                                     &max_workspace_size,
+                                                     sizeof(max_workspace_size)));
 }
 
 void HPLMXP_FreeGPU() {

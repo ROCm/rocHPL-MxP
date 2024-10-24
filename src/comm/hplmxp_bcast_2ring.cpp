@@ -168,3 +168,8 @@ template int HPLMXP_bcast_2ring(__half*  SBUF,
                                 int      SCOUNT,
                                 int      ROOT,
                                 MPI_Comm COMM);
+
+template int HPLMXP_bcast_2ring(hipblaslt_f8_fnuz*  SBUF,
+                                int      SCOUNT,
+                                int      ROOT,
+                                MPI_Comm COMM);

@@ -16,10 +16,10 @@
 
 #include "hplmxp.hpp"
 
-void HPLMXP_pgesv(HPLMXP_T_grid&         grid,
-                  HPLMXP_T_palg&         algo,
-                  HPLMXP_T_pmat<fp64_t>& A,
-                  HPLMXP_T_pmat<fp32_t>& LU) {
+void HPLMXP_pgesv(HPLMXP_T_grid&                 grid,
+                  HPLMXP_T_palg&                 algo,
+                  HPLMXP_T_pmat<approx_type_t,
+                                compute_type_t>& A) {
   /*
    * Purpose
    * =======
@@ -47,10 +47,10 @@ void HPLMXP_pgesv(HPLMXP_T_grid&         grid,
    */
 
   HPLMXP_ptimer(HPLMXP_TIMING_PGETRF);
-  HPLMXP_pgetrf(grid, algo, LU);
+  HPLMXP_pgetrf(grid, algo, A);
   HPLMXP_ptimer(HPLMXP_TIMING_PGETRF);
 
   HPLMXP_ptimer(HPLMXP_TIMING_IR);
-  HPLMXP_iterative_refinement(grid, algo, A, LU);
+  HPLMXP_iterative_refinement(grid, algo, A);
   HPLMXP_ptimer(HPLMXP_TIMING_IR);
 }

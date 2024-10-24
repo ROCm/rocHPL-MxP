@@ -201,3 +201,8 @@ template int HPLMXP_bcast_blonM(__half*  SBUF,
                                 int      SCOUNT,
                                 int      ROOT,
                                 MPI_Comm COMM);
+
+template int HPLMXP_bcast_blonM(hipblaslt_f8_fnuz*  SBUF,
+                                int      SCOUNT,
+                                int      ROOT,
+                                MPI_Comm COMM);

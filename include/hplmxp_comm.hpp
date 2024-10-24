@@ -51,6 +51,11 @@ struct Mpi_type_wrappe<int> {
 };
 
 template <>
+struct Mpi_type_wrappe<hipblaslt_f8_fnuz> {
+  operator MPI_Datatype() { return MPI_CHAR; }
+};
+
+template <>
 struct Mpi_type_wrappe<__half> {
   operator MPI_Datatype() { return MPI_SHORT; }
 };

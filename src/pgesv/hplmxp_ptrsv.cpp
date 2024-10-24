@@ -2,7 +2,8 @@
 #include "hplmxp.hpp"
 
 void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_pmat<fp32_t>& A,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>& A,
                    fp64_t*                x,
                    fp64_t*                work) {
   // x is a column vector
@@ -10,7 +11,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
   // all the values will be modified after the computation
   // w1 and w2 are working space which has same size with x.
   // w3 has length b
-  fp32_t*   Ap      = A.A;
+  approx_type_t*   Ap      = A.A;
   int const b       = A.nb;
   int const nblocks = A.n / b;
   int const nbrow   = A.nbrow;
@@ -38,7 +39,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
   fp64_t* w3 = w2 + b * nbrow;
 
   /* set value */
-  HPLMXP_set(b * nbrow, 0.0, w1);
+  HPLMXP_set(b * nbrow, fp64_t{0.0}, w1);
   HIP_CHECK(hipDeviceSynchronize());
 
   for(int pj = 0; pj < nbcol; ++pj) {
@@ -78,7 +79,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
       MPI_Wait(&req_recv_pivv, MPI_STATUS_IGNORE);
 
       // compute the pivot first
-      HPLMXP_axpy(b, -1.0, w1 + b * istart, x + b * istart);
+      HPLMXP_axpy(b, fp64_t{-1.0}, w1 + b * istart, x + b * istart);
 
       HPLMXP_trsvL(b, W, b, x + b * istart);
 
@@ -87,11 +88,11 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
       if(istart + 1 < nbrow) {
         HPLMXP_gemv(b,
                     b,
-                    1.0,
+                    fp64_t{1.0},
                     Mptr(Ap, (istart + 1) * b, pj * b, lda),
                     lda,
                     x + b * istart,
-                    0.0,
+                    fp64_t{0.0},
                     w2 + b * (istart + 1));
       }
 
@@ -105,7 +106,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
       if(istart + 1 < nbrow) {
         MPI_Wait(&req_recv_v, MPI_STATUS_IGNORE);
 
-        HPLMXP_axpy(b, 1.0, w2 + b * (istart + 1), w1 + b * (istart + 1));
+        HPLMXP_axpy(b, fp64_t{1.0}, w2 + b * (istart + 1), w1 + b * (istart + 1));
 
         /* sync */
         HIP_CHECK(hipStreamSynchronize(computeStream));
@@ -114,16 +115,16 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
         if(istart + 2 < nbrow) {
           HPLMXP_gemv(b * (nbrow - istart - 2),
                       b,
-                      1.0,
+                      fp64_t{1.0},
                       Mptr(Ap, (istart + 2) * b, pj * b, lda),
                       lda,
                       x + b * istart,
-                      0.0,
+                      fp64_t{0.0},
                       w2 + b * (istart + 2));
 
           // Fuse this with above^?
           HPLMXP_axpy(b * (nbrow - istart - 2),
-                      1.0,
+                      fp64_t{1.0},
                       w2 + b * (istart + 2),
                       w1 + b * (istart + 2));
         }
@@ -181,11 +182,11 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
       // compute the critical-path first
       HPLMXP_gemv(b,
                   b,
-                  1.0,
+                  fp64_t{1.0},
                   Mptr(Ap, istart * b, pj * b, lda),
                   lda,
                   w3,
-                  0.0,
+                  fp64_t{0.0},
                   w2 + b * istart);
 
       if(!bottom_is_pivot && !no_bottom) {
@@ -194,7 +195,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
 
       MPI_Wait(&req_recv_pivv, MPI_STATUS_IGNORE);
 
-      HPLMXP_axpy(b, 1.0, w2 + b * istart, w1 + b * istart);
+      HPLMXP_axpy(b, fp64_t{1.0}, w2 + b * istart, w1 + b * istart);
 
       /* sync */
       HIP_CHECK(hipStreamSynchronize(computeStream));
@@ -203,11 +204,11 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
       if(istart + 1 < nbrow) {
         HPLMXP_gemv(b * (nbrow - istart - 1),
                     b,
-                    1.0,
+                    fp64_t{1.0},
                     Mptr(Ap, (istart + 1) * b, pj * b, lda),
                     lda,
                     w3,
-                    0.0,
+                    fp64_t{0.0},
                     w2 + b * (istart + 1));
       }
 
@@ -218,7 +219,7 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
         MPI_Wait(&req_recv_v, MPI_STATUS_IGNORE);
 
         HPLMXP_axpy(b * (nbrow - istart - 1),
-                    1.0,
+                    fp64_t{1.0},
                     w2 + b * (istart + 1),
                     w1 + b * (istart + 1));
 
@@ -237,7 +238,8 @@ void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
 }
 
 void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_pmat<fp32_t>& A,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>& A,
                    fp64_t*                x,
                    fp64_t*                work) {
   // x is a column vector
@@ -245,7 +247,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
   // all the values will be modified after the computation
   // w1 and w2 are working space which has same size with x.
   // w3 has length b
-  fp32_t*   Ap      = A.A;
+  approx_type_t*   Ap      = A.A;
   int const b       = A.nb;
   int const nblocks = A.n / b;
   int const nbrow   = A.nbrow;
@@ -272,7 +274,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
   fp64_t* w2 = w1 + b * nbrow;
   fp64_t* w3 = w2 + b * nbrow;
 
-  HPLMXP_set(b * nbrow, 0.0, w1);
+  HPLMXP_set(b * nbrow, fp64_t{0.0}, w1);
   HIP_CHECK(hipDeviceSynchronize());
 
   for(int pj = nbcol - 1; pj >= 0; --pj) {
@@ -312,7 +314,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
 
       MPI_Wait(&req_recv_pivv, MPI_STATUS_IGNORE);
 
-      HPLMXP_axpy(b, -1.0, w1 + b * (iend - 1), x + b * (iend - 1));
+      HPLMXP_axpy(b, fp64_t{-1.0}, w1 + b * (iend - 1), x + b * (iend - 1));
 
       // compute the pivot first
       HPLMXP_trsvU(b, W, b, x + b * (iend - 1));
@@ -322,11 +324,11 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
       if(iend > 1) {
         HPLMXP_gemv(b,
                     b,
-                    1.0,
+                    fp64_t{1.0},
                     Mptr(Ap, (iend - 2) * b, pj * b, lda),
                     lda,
                     x + b * (iend - 1),
-                    0.0,
+                    fp64_t{0.0},
                     w2 + b * (iend - 2));
       }
 
@@ -345,7 +347,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
       if(iend > 1) {
         MPI_Wait(&req_recv_v, MPI_STATUS_IGNORE);
 
-        HPLMXP_axpy(b, 1.0, w2 + b * (iend - 2), w1 + b * (iend - 2));
+        HPLMXP_axpy(b, fp64_t{1.0}, w2 + b * (iend - 2), w1 + b * (iend - 2));
 
         /* sync */
         HIP_CHECK(hipStreamSynchronize(computeStream));
@@ -353,14 +355,14 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
         if(iend > 2) {
           HPLMXP_gemv(b * (iend - 2),
                       b,
-                      1.0,
+                      fp64_t{1.0},
                       Mptr(Ap, 0, pj * b, lda),
                       lda,
                       x + b * (iend - 1),
-                      0.0,
+                      fp64_t{0.0},
                       w2);
 
-          HPLMXP_axpy(b * (iend - 2), 1.0, w2, w1);
+          HPLMXP_axpy(b * (iend - 2), fp64_t{1.0}, w2, w1);
         }
 
         MPI_Send(w1 + b * (iend - 2),
@@ -418,11 +420,11 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
       // compute the critical-path first
       HPLMXP_gemv(b,
                   b,
-                  1.0,
+                  fp64_t{1.0},
                   Mptr(Ap, (iend - 1) * b, pj * b, lda),
                   lda,
                   w3,
-                  0.0,
+                  fp64_t{0.0},
                   w2 + b * (iend - 1));
 
       if(!stop_bcast) {
@@ -431,7 +433,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
 
       MPI_Wait(&req_recv_pivv, MPI_STATUS_IGNORE);
 
-      HPLMXP_axpy(b, 1.0, w2 + b * (iend - 1), w1 + b * (iend - 1));
+      HPLMXP_axpy(b, fp64_t{1.0}, w2 + b * (iend - 1), w1 + b * (iend - 1));
 
       /* sync */
       HIP_CHECK(hipStreamSynchronize(computeStream));
@@ -439,7 +441,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
       // compute others last
       if(iend > 1) {
         HPLMXP_gemv(
-            b * (iend - 1), b, 1.0, Mptr(Ap, 0, pj * b, lda), lda, w3, 0.0, w2);
+            b * (iend - 1), b, fp64_t{1.0}, Mptr(Ap, 0, pj * b, lda), lda, w3, fp64_t{0.0}, w2);
       }
 
       MPI_Send(w1 + b * (iend - 1),
@@ -452,7 +454,7 @@ void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
       if(iend > 1) {
         MPI_Wait(&req_recv_v, MPI_STATUS_IGNORE);
 
-        HPLMXP_axpy(b * (iend - 1), 1.0, w2, w1);
+        HPLMXP_axpy(b * (iend - 1), fp64_t{1.0}, w2, w1);
 
         /* sync */
         HIP_CHECK(hipStreamSynchronize(computeStream));

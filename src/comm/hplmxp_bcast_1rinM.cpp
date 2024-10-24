@@ -128,3 +128,8 @@ template int HPLMXP_bcast_1rinM(__half*  SBUF,
                                 int      SCOUNT,
                                 int      ROOT,
                                 MPI_Comm COMM);
+
+template int HPLMXP_bcast_1rinM(hipblaslt_f8_fnuz*  SBUF,
+                                int      SCOUNT,
+                                int      ROOT,
+                                MPI_Comm COMM);

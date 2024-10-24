@@ -159,7 +159,7 @@ __global__ void randmat(const int n,
 
     // loop through rows in panel
     for(int i = threadIdx.x; i < nb; i += RANDMAT_DIM) {
-      Aj[i] = stat_i.toDouble();
+      Aj[i] = static_cast<T>(stat_i.toDouble());
       stat_i *= jump_tb; // shift by RANDMAT_DIM rows
     }
 
@@ -168,15 +168,15 @@ __global__ void randmat(const int n,
   }
 }
 
-template <typename T>
+template <typename T, typename V>
 __global__ void randmat_write_diag(const int n,
                                   const int nb,
                                   const int myrow,
                                   const int mycol,
                                   const int nprow,
                                   const int npcol,
-                                  const double* __restrict__ d,
-                                  T* __restrict__ A,
+                                  const T* __restrict__ d,
+                                  V* __restrict__ A,
                                   const int lda) {
 
   const int id = threadIdx.x + blockIdx.x * blockDim.x; // local row index
@@ -188,13 +188,13 @@ __global__ void randmat_write_diag(const int n,
 
     if(ipos % npcol == mycol) { // I own the diagonal block
       const int bj = ipos / npcol;
-      A[(i + bi * nb) + (i + bj * nb) * static_cast<size_t>(lda)] = d[id];
+      A[(i + bi * nb) + (i + bj * nb) * static_cast<size_t>(lda)] = static_cast<V>(d[id]);
     }
   }
 }
 
-template <typename T>
-void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+template <typename A_t, typename C_t>
+void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<A_t, C_t>& A) {
 
   int const n     = A.n;
   int const b     = A.nb;
@@ -206,7 +206,7 @@ void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   int const nprow = grid.nprow;
   int const npcol = grid.npcol;
 
-  double* d = A.work;
+  fp64_t* d = A.work;
 
   RandCoeff jump_i = RandCoeff::default_vals();
   RandCoeff jump_j = pow(jump_i, n);
@@ -256,12 +256,11 @@ void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   HIP_CHECK(hipGetLastError());
 }
 
-template void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<approx_type_t,
+                                                                 compute_type_t>& A);
 
-template void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
-
-template <typename T>
-void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+template <typename A_t, typename C_t>
+void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<A_t, C_t>& A) {
 
   int n     = A.n;
   int nb    = A.nb;
@@ -290,12 +289,11 @@ void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   A.normb = HPLMXP_plange(grid, nb * nbrow, nb, A.b);
 }
 
-template void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<approx_type_t,
+                                                                     compute_type_t>& A);
 
-template void HPLMXP_prandmat_rhs(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);
-
-template <typename T>
-void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
+template <typename A_t, typename C_t>
+void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<A_t, C_t>& A) {
 
   int n     = A.n;
   int nb    = A.nb;
@@ -340,14 +338,14 @@ void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
 
   // initial approximation, x_0 = diag(A)^{-1} b
   HPLMXP_pcopy(grid, nb * nbrow, nb, A.b, A.x);
-  HPLMXP_paydx(grid, nb * nbrow, nb, T{1.0}, A.d, A.x);
+  HPLMXP_paydx(grid, nb * nbrow, nb, fp64_t{1.0}, A.d, A.x);
 
   // the diagonal of the hpl-mxp matrix is the sum of the absolute values of the
   // off-diagonals on the same row. therefore, twice of the diagonal is the
   // l1-norm of that row.
-  A.norma = 2. * HPLMXP_plange(grid, nb * nbrow, nb, A.d);
+  A.norma = fp64_t{2.} * HPLMXP_plange(grid, nb * nbrow, nb, A.d);
 }
 
-template void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<double>& A);
+template void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<approx_type_t,
+                                                                   compute_type_t>& A);
 
-template void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<float>& A);

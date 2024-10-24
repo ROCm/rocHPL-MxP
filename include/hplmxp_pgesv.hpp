@@ -35,9 +35,9 @@ typedef struct HPLMXP_S_palg {
   int          its;   /* iterations */
 } HPLMXP_T_palg;
 
-template <typename T>
+template <typename A_t, typename C_t>
 struct HPLMXP_T_pmat {
-  T*     A;     /* pointer to local piece of A */
+  A_t*   A;     /* pointer to local piece of A */
   int    n;     /* global problem size */
   int    nb;    /* blocking factor */
   int    ld;    /* local leading dimension */
@@ -45,20 +45,24 @@ struct HPLMXP_T_pmat {
   int    nq;    /* local number of columns */
   int    nbrow; /* local number of row panels */
   int    nbcol; /* local number of column panels */
-  T*     d;     /* pointer to diagonal of A */
-  T*     b;     /* pointer to rhs vector */
-  T*     x;     /* pointer to solution vector */
+  fp64_t*   d;     /* pointer to diagonal of A */
+  fp64_t*   b;     /* pointer to rhs vector */
+  fp64_t*   x;     /* pointer to solution vector */
   fp64_t norma; /* matrix norm */
   fp64_t normb; /* rhs vector norm */
   fp64_t res;   /* residual norm */
 
-  fp32_t* piv;  /* pointer to diagonal panel */
-  fp16_t* pivL; /* pointer to diagonal panel */
-  fp16_t* pivU; /* pointer to diagonal panel */
+  // Accumulation type in GEMMs, and precision for getrf
+  using factType_t = typename gemmTypes<C_t>::computeType;
+  factType_t* piv;  /* pointer to diagonal panel */
+  C_t*        pivL; /* pointer to diagonal panel */
+  C_t*        pivU; /* pointer to diagonal panel */
 
-  fp64_t* work; /* workspace */
+  fp64_t*   work; /* workspace */
 
-  HPLMXP_T_panel<T> panels[2];
+  HPLMXP_T_panel<A_t, C_t> panels[2];
+
+  size_t totalMem;
 };
 
 /*
@@ -66,36 +70,40 @@ struct HPLMXP_T_pmat {
  * Function prototypes
  * ---------------------------------------------------------------------
  */
-void HPLMXP_pgesv(HPLMXP_T_grid&         grid,
-                  HPLMXP_T_palg&         algo,
-                  HPLMXP_T_pmat<fp64_t>& A,
-                  HPLMXP_T_pmat<fp32_t>& LU);
+void HPLMXP_pgesv(HPLMXP_T_grid&                 grid,
+                  HPLMXP_T_palg&                 algo,
+                  HPLMXP_T_pmat<approx_type_t,
+                                compute_type_t>& A);
 
-void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_palg&         algo,
-                   HPLMXP_T_pmat<fp32_t>& A);
+void HPLMXP_pgetrf(HPLMXP_T_grid&                 grid,
+                   HPLMXP_T_palg&                 algo,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>& A);
 
-void HPLMXP_iterative_refinement(HPLMXP_T_grid&         grid,
-                                 HPLMXP_T_palg&         algo,
-                                 HPLMXP_T_pmat<fp64_t>& A,
-                                 HPLMXP_T_pmat<fp32_t>& LU);
+void HPLMXP_iterative_refinement(HPLMXP_T_grid&                 grid,
+                                 HPLMXP_T_palg&                 algo,
+                                 HPLMXP_T_pmat<approx_type_t,
+                                               compute_type_t>& A);
 
-void HPLMXP_pgemv(HPLMXP_T_grid&         grid,
-                  HPLMXP_T_pmat<fp64_t>& A,
-                  fp64_t                 alpha,
-                  fp64_t*                x,
-                  fp64_t                 beta,
-                  fp64_t*                y);
+void HPLMXP_pgemv(HPLMXP_T_grid&                         grid,
+                  HPLMXP_T_pmat<approx_type_t,
+                                compute_type_t>&         A,
+                  fp64_t                         alpha,
+                  fp64_t*                        x,
+                  fp64_t                         beta,
+                  fp64_t*                        y);
 
-void HPLMXP_ptrsvL(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_pmat<fp32_t>& LU,
-                   fp64_t*                x,
-                   fp64_t*                work);
+void HPLMXP_ptrsvL(HPLMXP_T_grid&                         grid,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>&         A,
+                   fp64_t*                        x,
+                   fp64_t*                        work);
 
-void HPLMXP_ptrsvU(HPLMXP_T_grid&         grid,
-                   HPLMXP_T_pmat<fp32_t>& LU,
-                   fp64_t*                x,
-                   fp64_t*                work);
+void HPLMXP_ptrsvU(HPLMXP_T_grid&                         grid,
+                   HPLMXP_T_pmat<approx_type_t,
+                                 compute_type_t>&         A,
+                   fp64_t*                        x,
+                   fp64_t*                        work);
 
 #endif
 /*
