@@ -69,7 +69,7 @@ option(HPLMXP_DETAILED_TIMING "Enable detail timers" OFF)
 include(cmake/Dependencies.cmake)
 
 # Setup version
-rocm_setup_version(VERSION 2.1.0)
+rocm_setup_version(VERSION 3.0.0)
 
 # This option only works for make/nmake and the ninja generators, but no reason it shouldn't be on all the time
 # This tells cmake to create a compile_commands.json file that can be used with clang tooling or vim
