@@ -62,20 +62,6 @@ void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
 
   dev = localRank % deviceCount;
 
-#ifdef HPLMXP_VERBOSE_PRINT
-  if(rank < localSize) {
-    hipDeviceProp_t props;
-    HIP_CHECK(hipGetDeviceProperties(&props, dev));
-
-    printf("GPU  Binding: Process %d [(p,q)=(%d,%d)] GPU: %d, pciBusID %x \n",
-           rank,
-           grid.local_myrow,
-           grid.local_mycol,
-           dev,
-           props.pciBusID);
-  }
-#endif
-
   /* Assign device to MPI process, initialize BLAS and probe device properties
    */
   HIP_CHECK(hipSetDevice(dev));

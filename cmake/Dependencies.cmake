@@ -28,6 +28,9 @@
 # Git
 find_package(Git REQUIRED)
 
+# Find OpenMP package
+find_package(OpenMP REQUIRED)
+
 # MPI
 set(MPI_HOME ${HPLMXP_MPI_DIR})
 find_package(MPI REQUIRED)

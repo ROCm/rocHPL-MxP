@@ -98,6 +98,8 @@ filename=HPL-MxP.dat
 inputfile=false
 cmdrun=false
 
+devices=
+
 # #################################################
 # MPI Args
 # #################################################
@@ -124,7 +126,7 @@ fi
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,it:,help,version, --options hP:Q:p:q:N:i: -- "$@")
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,it:,help,version,devices:, --options hP:Q:p:q:N:i: -- "$@")
 else
   echo "Need a new version of getopt"
   exit 1
@@ -174,6 +176,9 @@ while true; do
         filename=${2}
         inputfile=true
         shift 2 ;;
+    --devices)
+        devices=${2}
+        shift 2 ;;
     --) shift ; break ;;
     *)  echo "Unexpected command line parameter received; aborting";
         exit 1
@@ -197,6 +202,10 @@ if [[ "${inputfile}" == true ]]; then
   rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -i ${filename} --it ${it}"
 else
   rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -N ${N} --NB ${NB} --it ${it}"
+fi
+
+if [ ! -z "${devices}" ]; then
+  rochplmxp_args+=" --devices=${devices}"
 fi
 
 #run

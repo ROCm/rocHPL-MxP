@@ -98,6 +98,8 @@ filename=HPL-MxP.dat
 inputfile=false
 cmdrun=false
 
+devices=
+
 export LD_LIBRARY_PATH=${rocblas_dir}:${blas_dir}:${rocm_dir}/lib:$LD_LIBRARY_PATH
 
 # #################################################
@@ -107,7 +109,7 @@ export LD_LIBRARY_PATH=${rocblas_dir}:${blas_dir}:${rocm_dir}/lib:$LD_LIBRARY_PA
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,it:,help,version, --options hP:Q:p:q:N:i: -- "$@")
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions NB:,it:,help,version,devices:, --options hP:Q:p:q:N:i: -- "$@")
 else
   echo "Need a new version of getopt"
   exit 1
@@ -156,6 +158,9 @@ while true; do
     -i)
         filename=${2}
         inputfile=true
+        shift 2 ;;
+    --devices)
+        devices=${2}
         shift 2 ;;
     --) shift ; break ;;
     *)  echo "Unexpected command line parameter received; aborting";
@@ -251,9 +256,104 @@ if [[ $((Q % q)) -gt 0 ]]; then
   exit 1
 fi
 
-mygpu=$((rank))
+myp=$((rank%p))
+myq=$((rank/p))
 
-# export HIP_VISIBLE_DEVICES=$mygpu
+#construct a list of all cpus, sorted by core
+cpulist=$(lscpu --parse=CPU,CORE,NODE | awk '!/#/' | tr ',' "\t" | sort -k 2 -g -s)
+
+#construct list of devices and their numa affinities
+devicelist=$(${rocm_dir}/bin/rocm-smi --csv --showtoponuma | tail -n +2 | tr ',' "\t")
+
+#count the cpus per core
+threads_per_core=$(echo "${cpulist}" | grep -c ".*	0	.*")
+
+#remove the extra cpus on each core to make a list of just physical cores, then sort by numa domain
+corelist=$(echo "$cpulist" | awk -v tpc=${threads_per_core} '(NR-1)%tpc==0' | sort -k 3 -g -s)
+
+#count numa domains
+line=($(echo "$cpulist" | tail -n 1))
+n_numa=$((line[2]+1))
+
+numa_core_counts=()
+numa_proc_counts=()
+for i in $(seq 1 ${n_numa}); do numa_core_counts+=(0); numa_proc_counts+=(0); done
+
+#parse the list of cpus to array and count cpus in each numa
+cpus=()
+while read -a line; do
+  cpus+=(${line[0]})
+  ((numa_core_counts[${line[2]}]++))
+done <<< ${corelist}
+
+numa_core_offsets=(0)
+for i in $(seq 1 $((n_numa-1))); do numa_core_offsets+=($((numa_core_offsets[$((i-1))] + numa_core_counts[$i]))); done
+
+#parse device to numa mapping
+device_to_numa=()
+while read -a line; do
+  device_to_numa+=(${line[1]})
+done <<< ${devicelist}
+
+rank_to_device=()
+
+if [ ! -z "${devices}" ]; then
+  IFS=',' read -r -a device_array <<< "$devices"
+  n_devices=${#device_array[@]}
+  for i in $(seq 0 $((size-1))); do
+    rank_to_device+=(${device_array[$((i%n_devices))]})
+  done
+
+  export ROCR_VISIBLE_DEVICES=${rank_to_device[rank]}
+else
+  n_devices=$(echo "${devicelist}" | grep -c "card")
+  for i in $(seq 0 $((size-1))); do
+    rank_to_device+=($((i%n_devices)))
+  done
+fi
+mygpu=${rank_to_device[rank]}
+mynuma=${device_to_numa[mygpu]}
+
+rank_to_numa=()
+for i in $(seq 0 $((size-1))); do
+  rank_to_numa+=(${device_to_numa[${rank_to_device[$((i%n_devices))]}]})
+done
+
+for i in $(seq 0 $((size-1))); do
+  numa=${rank_to_numa[$i]}
+  ((numa_proc_counts[numa]++))
+done
+
+omp_num_threads=$((numa_core_counts[mynuma]/numa_proc_counts[mynuma]))
+
+core_offset=${numa_core_offsets[mynuma]}
+for i in $(seq 0 $((rank-1))); do
+  numa=${rank_to_numa[$i]}
+  if [[ $numa -eq $mynuma ]]; then
+    core_offset=$((core_offset + omp_num_threads))
+  fi
+done
+
+omp_places="{${cpus[core_offset]}}"
+for c in $(seq 1 $((omp_num_threads-1))); do
+  omp_places+=",{${cpus[core_offset+c]}}"
+done
+
+if [[ $omp_num_threads -gt 1 ]]; then
+  places="{${cpus[core_offset]}-${cpus[core_offset+$((omp_num_threads-1))]}}"
+else
+  places="{${cpus[core_offset]}}"
+fi
+
+# Export OpenMP config
+export OMP_NUM_THREADS=${omp_num_threads}
+export OMP_PLACES=${omp_places}
+export OMP_PROC_BIND=true
+
+
+if [[ $globalRank -lt $size ]]; then
+  echo "Node Binding: Process $rank [(p,q)=($myp,$myq)] GPU: $mygpu, CPU Cores: $omp_num_threads - $places"
+fi
 
 rochplmxp_args="-P ${P} -Q ${Q} -p ${p} -q ${q} -it ${it}"
 if [[ "${inputfile}" == true ]]; then
