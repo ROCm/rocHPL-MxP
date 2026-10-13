@@ -17,7 +17,8 @@ function display_help()
   echo "    [--with-rocm=<dir>] Path to ROCm install (Default: /opt/rocm)"
   echo "    [--with-rocblas=<dir>] Path to rocBLAS library (Default: /opt/rocm/rocblas)"
   echo "    [--with-rocsolver=<dir>] Path to rocSOLVER library (Default: /opt/rocm/rocsolver)"
-  echo "    [--with-mpi=<dir>] Path to external MPI install (Default: clone+build OpenMPI)"
+  echo "    [--comm-backend=<mpi|rccl>] Communication backend (Default: mpi)"
+  echo "    [--with-mpi=<dir>] Path to external MPI install (Default: clone+build OpenMPI; mpi backend only)"
   echo "    [--verbose-print] Verbose output during HPL setup (Default: true)"
   echo "    [--enable-tracing] Annotate profiler traces with rocTX markers (Default: false)"
   echo "    [--progress-report] Print progress report to terminal during HPL run (Default: true)"
@@ -59,6 +60,12 @@ exit_with_error( )
       library_dependencies_centos+=("rocblas" "rocblas-devel" "rocsolver" "rocsolver-devel")
       library_dependencies_fedora+=("rocblas" "rocblas-dev" "rocsolver" "rocsolver-dev")
       library_dependencies_sles+=("rocblas" "rocblas-devel" "rocsolver" "rocsolver-devel")
+      if [[ "${comm_backend}" == rccl ]]; then
+        library_dependencies_ubuntu+=("rccl" "rccl-dev")
+        library_dependencies_centos+=("rccl" "rccl-devel")
+        library_dependencies_fedora+=("rccl" "rccl-dev")
+        library_dependencies_sles+=("rccl" "rccl-devel")
+      fi
     fi
 
     printf "Installation failed. Some required packages may be missing.\n"
@@ -210,6 +217,7 @@ supported_distro
 install_prefix=rocHPL-MxP
 build_release=true
 with_rocm=/opt/rocm
+comm_backend=mpi
 with_mpi=tpl/openmpi
 with_rocblas=/opt/rocm/rocblas
 with_rocsolver=/opt/rocm/rocsolver
@@ -225,7 +233,7 @@ detailed_timing=true
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-  GETOPT_PARSE=$(getopt --name "${0}" --longoptions help,debug,prefix:,with-rocm:,with-mpi:,with-rocblas:,with-rocsolver:,verbose-print:,enable-tracing:,progress-report:,detailed-timing: --options hg -- "$@")
+  GETOPT_PARSE=$(getopt --name "${0}" --longoptions help,debug,prefix:,with-rocm:,comm-backend:,with-mpi:,with-rocblas:,with-rocsolver:,verbose-print:,enable-tracing:,progress-report:,detailed-timing: --options hg -- "$@")
 else
   echo "Need a new version of getopt"
   exit_with_error 1
@@ -252,6 +260,9 @@ while true; do
         shift 2 ;;
     --with-rocm)
         with_rocm=${2}
+        shift 2 ;;
+    --comm-backend)
+        comm_backend=${2,,}
         shift 2 ;;
     --with-mpi)
         with_mpi=${2}
@@ -281,6 +292,11 @@ while true; do
   esac
 done
 
+if [[ "${comm_backend}" != mpi && "${comm_backend}" != rccl ]]; then
+  echo "--comm-backend must be mpi or rccl; aborting"
+  exit_with_error 1
+fi
+
 build_dir=./build
 printf "\033[32mCreating project build directory in: \033[33m${build_dir}\033[0m\n"
 
@@ -300,9 +316,9 @@ export PATH=${PATH}:${ROCM_PATH}/bin
 
 pushd .
   # #################################################
-  # MPI
+  # MPI (the rccl backend does not use MPI)
   # #################################################
-  if [[ "${with_mpi}" == tpl/openmpi ]]; then
+  if [[ "${comm_backend}" == mpi && "${with_mpi}" == tpl/openmpi ]]; then
 
     with_mpi=${PWD}/tpl/openmpi
     install_openmpi
@@ -312,8 +328,11 @@ pushd .
   # #################################################
   # configure & build
   # #################################################
-  cmake_common_options="-DCMAKE_INSTALL_PREFIX=${install_prefix} -DHPLMXP_MPI_DIR=${with_mpi}
+  cmake_common_options="-DCMAKE_INSTALL_PREFIX=${install_prefix} -DHPLMXP_COMM_BACKEND=${comm_backend^^}
                         -DROCM_PATH=${with_rocm} -DROCBLAS_PATH=${with_rocblas} -DROCSOLVER_PATH=${with_rocsolver}"
+  if [[ "${comm_backend}" == mpi ]]; then
+    cmake_common_options="${cmake_common_options} -DHPLMXP_MPI_DIR=${with_mpi}"
+  fi
 
   # build type
   if [[ "${build_release}" == true ]]; then
