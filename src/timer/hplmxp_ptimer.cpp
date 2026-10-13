@@ -180,7 +180,7 @@ double HPLMXP_ptimer_inquire(const HPLMXP_T_PTIME TMTYPE, const int I) {
   return (time);
 }
 
-void HPLMXP_ptimer_combine(MPI_Comm                COMM,
+void HPLMXP_ptimer_combine(HPLMXP_Comm             COMM,
                            const HPLMXP_T_PTIME_OP OPE,
                            const HPLMXP_T_PTIME    TMTYPE,
                            const int               N,
@@ -196,8 +196,8 @@ void HPLMXP_ptimer_combine(MPI_Comm                COMM,
    * Arguments
    * =========
    *
-   * COMM    (global/local input)        MPI_Comm
-   *         The MPI communicator  identifying  the process  collection on
+   * COMM    (global/local input)        HPLMXP_Comm
+   *         The communicator  identifying  the process  collection on
    *         which the timings are taken.
    *
    * OPE     (global input)              const HPLMXP_T_PTIME_OP
@@ -256,13 +256,13 @@ void HPLMXP_ptimer_combine(MPI_Comm                COMM,
   for(i = 0; i < N; i++) TIMES[i] = Mmax(HPLMXP_rzero, TIMES[i]);
 
   if(OPE == HPLMXP_AMAX_PTIME)
-    (void)HPLMXP_all_reduce(TIMES, N, HPLMXP_MAX, COMM);
+    (void)HPLMXP_all_reduce_host(TIMES, N, HPLMXP_MAX, COMM);
   else if(OPE == HPLMXP_AMIN_PTIME)
-    (void)HPLMXP_all_reduce(TIMES, N, HPLMXP_MIN, COMM);
+    (void)HPLMXP_all_reduce_host(TIMES, N, HPLMXP_MIN, COMM);
   else if(OPE == HPLMXP_SUM_PTIME)
-    (void)HPLMXP_all_reduce(TIMES, N, HPLMXP_SUM, COMM);
+    (void)HPLMXP_all_reduce_host(TIMES, N, HPLMXP_SUM, COMM);
   else
-    (void)HPLMXP_all_reduce(TIMES, N, HPLMXP_MAX, COMM);
+    (void)HPLMXP_all_reduce_host(TIMES, N, HPLMXP_MAX, COMM);
 
   HPLMXP_ptimer_disabled = tmpdis;
 }

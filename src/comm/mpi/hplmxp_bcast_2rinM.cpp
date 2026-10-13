@@ -14,7 +14,7 @@
  * ---------------------------------------------------------------------
  */
 
-#include "hplmxp.hpp"
+#include "hplmxp_comm_mpi.hpp"
 
 template <typename T>
 int HPLMXP_bcast_2rinM(T* SBUF, int SCOUNT, int ROOT, MPI_Comm COMM) {

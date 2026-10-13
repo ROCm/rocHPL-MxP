@@ -135,7 +135,8 @@ void HPLMXP_ptest(HPLMXP_T_test& test,
     HPLMXP_prandmat(grid, LU);
     HPLMXP_prandmat_rhs(grid, A);
     HPLMXP_prandmat_x(grid, A);
-    HIP_CHECK(hipDeviceSynchronize());
+    HPLMXP_comm_sync(nullptr,
+                     "the device wait after matrix generation (HPLMXP_ptest)");
 
     /*
      * Solve linear system

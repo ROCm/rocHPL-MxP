@@ -17,7 +17,7 @@
 #include "hplmxp.hpp"
 
 template <typename T>
-T HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH) {
+T HPLMXP_plamch(HPLMXP_Comm COMM, const HPLMXP_T_MACH CMACH) {
   /*
    * Purpose
    * =======
@@ -34,8 +34,8 @@ T HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH) {
    * Arguments
    * =========
    *
-   * COMM    (global/local input)          MPI_Comm
-   *         The MPI communicator identifying the process collection.
+   * COMM    (global/local input)          HPLMXP_Comm
+   *         The communicator identifying the process collection.
    *
    * CMACH   (global input)                const HPLMXP_T_MACH
    *         Specifies the value to be returned by HPLMXP_plamch
@@ -75,11 +75,11 @@ T HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH) {
     case HPLMXP_MACH_SFMIN:
     case HPLMXP_MACH_EMIN:
     case HPLMXP_MACH_RMIN:
-      (void)HPLMXP_all_reduce(&param, 1, HPLMXP_MAX, COMM);
+      (void)HPLMXP_all_reduce_host(&param, 1, HPLMXP_MAX, COMM);
       break;
     case HPLMXP_MACH_EMAX:
     case HPLMXP_MACH_RMAX:
-      (void)HPLMXP_all_reduce(&param, 1, HPLMXP_MIN, COMM);
+      (void)HPLMXP_all_reduce_host(&param, 1, HPLMXP_MIN, COMM);
       break;
     default: break;
   }
@@ -87,6 +87,6 @@ T HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH) {
   return (param);
 }
 
-template float HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH);
+template float HPLMXP_plamch(HPLMXP_Comm COMM, const HPLMXP_T_MACH CMACH);
 
-template double HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH);
+template double HPLMXP_plamch(HPLMXP_Comm COMM, const HPLMXP_T_MACH CMACH);

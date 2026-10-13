@@ -41,7 +41,7 @@ void HPLMXP_pdlaprnt(const HPLMXP_T_grid*,
                      const char*);
 
 template <typename T>
-T HPLMXP_plamch(MPI_Comm COMM, const HPLMXP_T_MACH CMACH);
+T HPLMXP_plamch(HPLMXP_Comm COMM, const HPLMXP_T_MACH CMACH);
 
 template <typename T>
 void HPLMXP_pcopy(HPLMXP_T_grid& grid,

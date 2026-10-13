@@ -14,9 +14,9 @@
  * ---------------------------------------------------------------------
  */
 
-#include "hplmxp.hpp"
+#include "hplmxp_comm_mpi.hpp"
 
-int HPLMXP_barrier(MPI_Comm COMM) {
+int HPLMXP_barrier(HPLMXP_Comm COMM) {
   /*
    * Purpose
    * =======
@@ -28,13 +28,13 @@ int HPLMXP_barrier(MPI_Comm COMM) {
    * Arguments
    * =========
    *
-   * COMM    (global/local input)          MPI_Comm
-   *         The MPI communicator identifying the process collection.
+   * COMM    (global/local input)          HPLMXP_Comm
+   *         The communicator identifying the process collection.
    *
    * ---------------------------------------------------------------------
    */
 
-  int ierr = MPI_Barrier(COMM);
+  int ierr = MPI_Barrier(HPLMXP_mpi(COMM));
 
   return ((ierr == MPI_SUCCESS ? HPLMXP_SUCCESS : HPLMXP_FAILURE));
 }

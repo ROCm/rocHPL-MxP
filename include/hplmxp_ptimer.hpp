@@ -21,6 +21,7 @@
  * ---------------------------------------------------------------------
  */
 #include "hplmxp_pmisc.hpp"
+#include "hplmxp_comm.hpp"
 
 /*
  * ---------------------------------------------------------------------
@@ -52,7 +53,7 @@ double HPLMXP_ptimer_walltime(void);
 void   HPLMXP_ptimer(const int);
 void   HPLMXP_ptimer_boot(void);
 
-void HPLMXP_ptimer_combine(MPI_Comm comm,
+void HPLMXP_ptimer_combine(HPLMXP_Comm comm,
                            const HPLMXP_T_PTIME_OP,
                            const HPLMXP_T_PTIME,
                            const int,

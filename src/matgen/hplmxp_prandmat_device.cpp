@@ -236,7 +236,7 @@ void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
                                             jump_qnb,
                                             d);
   HIP_CHECK(hipGetLastError());
-  HIP_CHECK(hipStreamSynchronize(computeStream));
+  HPLMXP_comm_sync(computeStream, "the device wait in HPLMXP_prandmat");
 
   // generate matrix
   gs = dim3(b, nbcol);
@@ -246,7 +246,7 @@ void HPLMXP_prandmat(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
   HIP_CHECK(hipGetLastError());
 
   // assemble diagonal
-  HPLMXP_all_reduce(d, b * nbrow, HPLMXP_SUM, grid.row_comm);
+  HPLMXP_all_reduce(d, b * nbrow, HPLMXP_SUM, grid.row_comm, computeStream);
 
   // write diagonal into matrix
   gs = (b * nbrow + RANDMAT_RHS_DIM - 1) / RANDMAT_RHS_DIM;
@@ -334,9 +334,9 @@ void HPLMXP_prandmat_x(HPLMXP_T_grid& grid, HPLMXP_T_pmat<T>& A) {
                                             A.d);
   HIP_CHECK(hipGetLastError());
 
-  HIP_CHECK(hipStreamSynchronize(computeStream));
+  HPLMXP_comm_sync(computeStream, "the device wait in HPLMXP_prandmat_x");
 
-  HPLMXP_all_reduce(A.d, nb * nbrow, HPLMXP_SUM, grid.row_comm);
+  HPLMXP_all_reduce(A.d, nb * nbrow, HPLMXP_SUM, grid.row_comm, computeStream);
 
   // initial approximation, x_0 = diag(A)^{-1} b
   HPLMXP_pcopy(grid, nb * nbrow, nb, A.b, A.x);

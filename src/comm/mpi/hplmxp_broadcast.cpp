@@ -14,13 +14,13 @@
  * ---------------------------------------------------------------------
  */
 
-#include "hplmxp.hpp"
+#include "hplmxp_comm_mpi.hpp"
 
 template <typename T>
-int HPLMXP_broadcast(T*        BUFFER,
-                     const int COUNT,
-                     const int ROOT,
-                     MPI_Comm  COMM) {
+int HPLMXP_broadcast_host(T*          BUFFER,
+                          const int   COUNT,
+                          const int   ROOT,
+                          HPLMXP_Comm COMM) {
   /*
    * Purpose
    * =======
@@ -43,28 +43,17 @@ int HPLMXP_broadcast(T*        BUFFER,
    * ROOT    (global input)                const int
    *         On entry, ROOT is the coordinate of the source process.
    *
-   * COMM    (global/local input)          MPI_Comm
-   *         The MPI communicator identifying the process collection.
+   * COMM    (global/local input)          HPLMXP_Comm
+   *         The communicator identifying the process collection.
    *
    * ---------------------------------------------------------------------
    */
 
-  int ierr = MPI_Bcast(BUFFER, COUNT, T2MPI<T>::type, ROOT, COMM);
+  int ierr = MPI_Bcast(BUFFER, COUNT, T2MPI<T>::type, ROOT, HPLMXP_mpi(COMM));
 
   return ((ierr == MPI_SUCCESS ? HPLMXP_SUCCESS : HPLMXP_FAILURE));
 }
 
-template int HPLMXP_broadcast(double*   BUFFER,
-                              const int COUNT,
-                              const int ROOT,
-                              MPI_Comm  COMM);
-
-template int HPLMXP_broadcast(float*    BUFFER,
-                              const int COUNT,
-                              const int ROOT,
-                              MPI_Comm  COMM);
-
-template int HPLMXP_broadcast(int*      BUFFER,
-                              const int COUNT,
-                              const int ROOT,
-                              MPI_Comm  COMM);
+template int HPLMXP_broadcast_host(double*, const int, const int, HPLMXP_Comm);
+template int HPLMXP_broadcast_host(float*, const int, const int, HPLMXP_Comm);
+template int HPLMXP_broadcast_host(int*, const int, const int, HPLMXP_Comm);

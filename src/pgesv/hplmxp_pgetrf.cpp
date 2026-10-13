@@ -98,7 +98,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
 #endif
 
   /* start time */
-  double start_time = MPI_Wtime();
+  double start_time = HPLMXP_wtime();
 
   i = 0, j = 0;
 
@@ -107,7 +107,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
 
     const int n = N - k * b;
 
-    double stepStart = MPI_Wtime();
+    double stepStart = HPLMXP_wtime();
 
     HPLMXP_T_panel<fp32_t>& prev = A.panels[k % 2];
     HPLMXP_T_panel<fp32_t>& next = A.panels[(k + 1) % 2];
@@ -182,7 +182,12 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       if(!icurrow) {
         HPLMXP_TracingPush("D Column Bcast");
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-        HPLMXP_bcast(A.piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
+        HPLMXP_bcast(A.piv,
+                     (size_t)ldpiv * b,
+                     rootrow,
+                     grid.col_comm,
+                     computeStream,
+                     algo.btopo);
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
         HPLMXP_TracingPop("D Column Bcast");
       }
@@ -241,7 +246,12 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       if(!icurcol) {
         HPLMXP_TracingPush("D Row Bcast");
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-        HPLMXP_bcast(A.piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
+        HPLMXP_bcast(A.piv,
+                     (size_t)ldpiv * b,
+                     rootcol,
+                     grid.row_comm,
+                     computeStream,
+                     algo.btopo);
         HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
         HPLMXP_TracingPop("D Row Bcast");
       }
@@ -296,14 +306,24 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
       /* broadcast piv */
       HPLMXP_TracingPush("D Row Bcast");
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-      HPLMXP_bcast(A.piv, ldpiv * b, rootcol, grid.row_comm, algo.btopo);
+      HPLMXP_bcast(A.piv,
+                   (size_t)ldpiv * b,
+                   rootcol,
+                   grid.row_comm,
+                   computeStream,
+                   algo.btopo);
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
       HPLMXP_TracingPop("D Row Bcast");
 
       /* broadcast piv */
       HPLMXP_TracingPush("D Column Bcast");
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
-      HPLMXP_bcast(A.piv, ldpiv * b, rootrow, grid.col_comm, algo.btopo);
+      HPLMXP_bcast(A.piv,
+                   (size_t)ldpiv * b,
+                   rootrow,
+                   grid.col_comm,
+                   computeStream,
+                   algo.btopo);
       HPLMXP_ptimer(HPLMXP_TIMING_DBCAST);
       HPLMXP_TracingPop("D Column Bcast");
     }
@@ -316,7 +336,12 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
     }
     HPLMXP_TracingPush("L Bcast");
     HPLMXP_ptimer(HPLMXP_TIMING_LBCAST);
-    HPLMXP_bcast(next.L, next.ldl * b, rootcol, grid.row_comm, algo.btopo);
+    HPLMXP_bcast(next.L,
+                 (size_t)next.ldl * b,
+                 rootcol,
+                 grid.row_comm,
+                 computeStream,
+                 algo.btopo);
     HPLMXP_ptimer(HPLMXP_TIMING_LBCAST);
     HPLMXP_TracingPop("L Bcast");
 
@@ -328,7 +353,12 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
     }
     HPLMXP_TracingPush("U Bcast");
     HPLMXP_ptimer(HPLMXP_TIMING_UBCAST);
-    HPLMXP_bcast(next.U, next.ldu * b, rootrow, grid.col_comm, algo.btopo);
+    HPLMXP_bcast(next.U,
+                 (size_t)next.ldu * b,
+                 rootrow,
+                 grid.col_comm,
+                 computeStream,
+                 algo.btopo);
     HPLMXP_ptimer(HPLMXP_TIMING_UBCAST);
     HPLMXP_TracingPop("U Bcast");
 
@@ -337,7 +367,7 @@ void HPLMXP_pgetrf(HPLMXP_T_grid&         grid,
     HIP_CHECK(hipDeviceSynchronize());
     HPLMXP_ptimer(HPLMXP_TIMING_UPDATE);
 
-    double stepEnd = MPI_Wtime();
+    double stepEnd = HPLMXP_wtime();
 
 #ifdef HPLMXP_PROGRESS_REPORT
 #ifdef HPLMXP_DETAILED_TIMING

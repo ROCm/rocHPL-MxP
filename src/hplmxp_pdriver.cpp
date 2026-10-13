@@ -39,9 +39,13 @@ int main(int ARGC, char** ARGV) {
   int            P, Q, p, q, ns, nbs, ntps, rank, size, its;
   HPLMXP_T_ORDER pmapping;
 
-  MPI_Init(&ARGC, &ARGV);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  /* A run killed from outside (step timeout) keeps every line it printed */
+  setvbuf(stdout, nullptr, _IOLBF, 0);
+
+  HPLMXP_Comm world;
+  HPLMXP_comm_world_init(&ARGC, &ARGV, &world);
+  rank = HPLMXP_comm_rank(world);
+  size = HPLMXP_comm_size(world);
 
   /*
    * Read and check validity of test parameters from input file
@@ -61,7 +65,8 @@ int main(int ARGC, char** ARGV) {
    * 1            # of broadcast
    * 0            BCASTs (0=1rg,1=1rM,2=2rg,3=2rM,4=Lng,5=LnM)
    */
-  HPLMXP_pinfo(ARGC,
+  HPLMXP_pinfo(world,
+               ARGC,
                ARGV,
                &test,
                &ns,
@@ -77,15 +82,19 @@ int main(int ARGC, char** ARGV) {
                topval,
                &its);
 
-  HPLMXP_grid_init(MPI_COMM_WORLD, pmapping, P, Q, p, q, grid);
+  HPLMXP_grid_init(world, pmapping, P, Q, p, q, grid);
 
   int mycol, myrow, nprow, npcol;
   HPLMXP_grid_info(grid, nprow, npcol, myrow, mycol);
 
-  // Initialize GPU
-  HPLMXP_InitGPU(grid);
+  /* Processes beyond P*Q are not part of the grid: they only finalize */
+  const bool in_grid = (grid.all_comm != HPLMXP_COMM_NULL);
 
-  for(int in = 0; in < ns; in++) { /* Loop over various problem sizes */
+  // Initialize GPU
+  if(in_grid) HPLMXP_InitGPU(grid);
+
+  for(int in = 0; in_grid && in < ns;
+      in++) { /* Loop over various problem sizes */
     for(int inb = 0; inb < nbs;
         inb++) { /* Loop over various blocking factors */
       for(int itop = 0; itop < ntps;
@@ -115,7 +124,7 @@ int main(int ARGC, char** ARGV) {
     }
   }
 
-  HPLMXP_FreeGPU();
+  if(in_grid) HPLMXP_FreeGPU();
 
   HPLMXP_grid_exit(grid);
 
@@ -180,7 +189,7 @@ int main(int ARGC, char** ARGV) {
       (void)fclose(test.outfp);
   }
 
-  MPI_Finalize();
+  HPLMXP_comm_finalize();
 
   return (0);
 }

@@ -136,7 +136,7 @@ void HPLMXP_pgemv(HPLMXP_T_grid&         grid,
   stat_ij *= pow(jump_j, nb * mycol);
 
   /* sync to ensure x is ready */
-  HIP_CHECK(hipStreamSynchronize(computeStream));
+  HPLMXP_comm_sync(computeStream, "the device wait at HPLMXP_pgemv entry");
 
   // first: initialize y data
   dim3 bs(256);
@@ -154,8 +154,10 @@ void HPLMXP_pgemv(HPLMXP_T_grid&         grid,
     const int jpos    = mycol + bj * npcol; // global column block number
     const int rootrow = jpos % nprow;
 
-    if(nprow > 1 && myrow != rootrow)
-      MPI_Bcast(x + bj * nb, nb, T2MPI<fp64_t>::type, rootrow, grid.col_comm);
+    if(nprow > 1 && myrow != rootrow) {
+      HPLMXP_bcast(
+          x + bj * nb, nb, rootrow, grid.col_comm, computeStream, HPLMXP_COLL);
+    }
 
     otf_gemv_knl<<<gs, bs, 0, computeStream>>>(n,
                                                nb,
@@ -174,13 +176,15 @@ void HPLMXP_pgemv(HPLMXP_T_grid&         grid,
 
     stat_ij *= jump_qnb; // shift by Q*NB columns to next panel
 
-    if(nprow > 1 && myrow == rootrow)
-      MPI_Bcast(x + bj * nb, nb, T2MPI<fp64_t>::type, rootrow, grid.col_comm);
+    if(nprow > 1 && myrow == rootrow) {
+      HPLMXP_bcast(
+          x + bj * nb, nb, rootrow, grid.col_comm, computeStream, HPLMXP_COLL);
+    }
   }
 
   /* sync */
-  HIP_CHECK(hipStreamSynchronize(computeStream));
+  HPLMXP_comm_sync(computeStream,
+                   "the device wait before the HPLMXP_pgemv all_reduce");
 
-  MPI_Allreduce(
-      MPI_IN_PLACE, y, nb * nbrow, T2MPI<fp64_t>::type, MPI_SUM, grid.row_comm);
+  HPLMXP_all_reduce(y, nb * nbrow, HPLMXP_SUM, grid.row_comm, computeStream);
 }

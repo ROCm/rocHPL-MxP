@@ -33,6 +33,14 @@ option(HPLMXP_TRACING         "Annotate profiler traces with rocTX markers" OFF)
 option(ROCM_PATH "Path to ROCm install" /opt/rocm)
 option(HPLMXP_MPI_DIR  "Path to MPI library" ${CMAKE_CURRENT_SOURCE_DIR}/tpl/openmpi)
 
+set(HPLMXP_COMM_BACKEND "MPI" CACHE STRING "Communication backend (MPI)")
+set_property(CACHE HPLMXP_COMM_BACKEND PROPERTY STRINGS MPI)
+if(NOT HPLMXP_COMM_BACKEND MATCHES "^(MPI)$")
+  message(FATAL_ERROR "HPLMXP_COMM_BACKEND must be MPI, got '${HPLMXP_COMM_BACKEND}'")
+endif()
+string(TOLOWER ${HPLMXP_COMM_BACKEND} HPLMXP_COMM_BACKEND_DIR)
+message(STATUS "Communication backend: ${HPLMXP_COMM_BACKEND}")
+
 set(CMAKE_INSTALL_PREFIX "rocHPL-MxP" CACHE PATH "Install path prefix, prepended onto install directories")
 
 # CMake modules
@@ -75,8 +83,9 @@ rocm_setup_version(VERSION 3.0.0)
 # This tells cmake to create a compile_commands.json file that can be used with clang tooling or vim
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# HPL sources
+# HPL sources (the communication backends are built separately below)
 file(GLOB_RECURSE rochplmxp_source RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.cpp")
+list(FILTER rochplmxp_source EXCLUDE REGEX "^src/comm/")
 
 # HPL device sources
 file(GLOB_RECURSE rochplmxp_device_source RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*_device.cpp")
@@ -118,6 +127,29 @@ foreach(target ${TARGETS})
   list(APPEND HIP_HIPCC_FLAGS "--offload-arch=${target}")
 endforeach()
 
+# Communication backend library. Host-only code; everything above it
+# talks to it through include/hplmxp_comm.hpp.
+file(GLOB hplmxp_comm_source "src/comm/${HPLMXP_COMM_BACKEND_DIR}/*.cpp")
+add_library(hplmxp_comm STATIC ${hplmxp_comm_source})
+target_compile_options(hplmxp_comm PRIVATE ${CMAKE_HOST_FLAGS})
+target_compile_definitions(hplmxp_comm PUBLIC HPLMXP_COMM_${HPLMXP_COMM_BACKEND})
+target_include_directories(hplmxp_comm
+                           PUBLIC
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                           $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+                           $<BUILD_INTERFACE:${ROCM_PATH}/include>
+                           $<BUILD_INTERFACE:${ROCM_PATH}/include/roctracer>)
+target_link_libraries(hplmxp_comm PUBLIC hip::host)
+# For the rocBLAS/rocSOLVER headers pulled in through hplmxp.hpp
+target_link_libraries(hplmxp_comm PRIVATE roc::rocblas roc::rocsolver)
+if(HPLMXP_COMM_BACKEND STREQUAL "MPI")
+  target_include_directories(hplmxp_comm PUBLIC $<BUILD_INTERFACE:${HPLMXP_MPI_DIR}/include>)
+  target_link_libraries(hplmxp_comm PUBLIC MPI::MPI_CXX)
+endif()
+if(HPLMXP_TRACING)
+  target_compile_definitions(hplmxp_comm PRIVATE HPLMXP_TRACING)
+endif()
+
 # Target executable
 hip_add_executable(rochplmxp ${rochplmxp_source} ${rochplmxp_device_source})
 
@@ -149,14 +181,13 @@ target_include_directories(rochplmxp
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
                            $<BUILD_INTERFACE:${ROCM_PATH}/include>
-                           $<BUILD_INTERFACE:${HPLMXP_MPI_DIR}/include>
                            $<BUILD_INTERFACE:${ROCM_PATH}/include/roctracer>)
 
 #HIP
 target_link_libraries(rochplmxp PRIVATE hip::host)
 
-# MPI
-target_link_libraries(rochplmxp PRIVATE MPI::MPI_CXX)
+# Communication backend
+target_link_libraries(rochplmxp PRIVATE hplmxp_comm)
 
 # OpenMP
 target_link_libraries(rochplmxp PRIVATE OpenMP::OpenMP_CXX)
@@ -179,6 +210,12 @@ set_target_properties(rochplmxp PROPERTIES LINKER_LANGUAGE CXX)
 target_link_options(rochplmxp PRIVATE "-fopenmp")
 
 set_target_properties(rochplmxp PROPERTIES HIP_ARCHITECTURES "${DEFAULT_AMDGPU_TARGETS}")
+
+# Communication layer unit test
+add_executable(comm_test testing/comm_test.cpp)
+target_compile_options(comm_test PRIVATE ${CMAKE_HOST_FLAGS})
+target_link_libraries(comm_test PRIVATE hplmxp_comm roc::rocblas roc::rocsolver)
+set_target_properties(comm_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 # # Configure a header file to pass the rocHPL-MxP version
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/hplmxp_version.hpp.in"

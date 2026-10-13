@@ -18,8 +18,42 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
+#include <cctype>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
 
-void HPLMXP_pinfo(int             ARGC,
+/* Strict integer: the whole string must be a number */
+static bool HPLMXP_pinfo_int(const char* s, int* v) {
+  char* end;
+  errno  = 0;
+  long x = strtol(s, &end, 10);
+  if(end == s || *end != '\0' || errno != 0 || x < INT_MIN || x > INT_MAX)
+    return false;
+  *v = (int)x;
+  return true;
+}
+
+/*
+ * The first COUNT whitespace-separated integers of LINE (anything after
+ * them is a comment). False if there are fewer or one is malformed.
+ */
+static bool HPLMXP_pinfo_ints(const char* line, int count, int* v) {
+  const char* s = line;
+  for(int i = 0; i < count; ++i) {
+    char* end;
+    errno  = 0;
+    long x = strtol(s, &end, 10);
+    if(end == s || errno != 0 || x < INT_MIN || x > INT_MAX) return false;
+    if(*end != '\0' && !isspace((unsigned char)*end)) return false;
+    v[i] = (int)x;
+    s    = end;
+  }
+  return true;
+}
+
+void HPLMXP_pinfo(HPLMXP_Comm     COMM,
+                  int             ARGC,
                   char**          ARGV,
                   HPLMXP_T_test*  TEST,
                   int*            NS,
@@ -43,6 +77,9 @@ void HPLMXP_pinfo(int             ARGC,
    *
    * Arguments
    * =========
+   *
+   * COMM    (global input)                HPLMXP_Comm
+   *         On entry, COMM is the world communicator.
    *
    * TEST    (global output)               HPLMXP_T_test *
    *         On entry, TEST  points to a testing data structure.  On exit,
@@ -109,15 +146,14 @@ void HPLMXP_pinfo(int             ARGC,
    * ---------------------------------------------------------------------
    */
 
-  char file[HPLMXP_LINE_MAX], line[HPLMXP_LINE_MAX], auth[HPLMXP_LINE_MAX],
-      num[HPLMXP_LINE_MAX];
-  FILE* infp;
-  int*  iwork = NULL;
-  char* lineptr;
-  int   error = 0, fid, i, j, lwork, maxp, nprocs, rank, size;
+  char  file[HPLMXP_LINE_MAX], line[HPLMXP_LINE_MAX], auth[HPLMXP_LINE_MAX];
+  FILE* infp   = NULL;
+  int*  iwork  = NULL;
+  int   lineno = 0;
+  int   error  = 0, fid, i, j, lwork, nprocs, rank, size;
 
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  rank = HPLMXP_comm_rank(COMM);
+  size = HPLMXP_comm_size(COMM);
   /*
    * Initialize the TEST data structure with default values
    */
@@ -125,6 +161,18 @@ void HPLMXP_pinfo(int             ARGC,
   TEST->epsil = 2.0e-16;
   TEST->thrsh = 16.0;
   TEST->kfail = TEST->kpass = TEST->kskip = TEST->ktest = 0;
+
+  /*
+   * Errors below are decided identically on every process (same command
+   * line, or a value that has been reduced or broadcast), so every process
+   * leaves through the same path. Process 0 reports.
+   */
+#define PINFO_FAIL(...)                                                        \
+  do {                                                                         \
+    if(rank == 0) HPLMXP_pwarn(stderr, __LINE__, "HPLMXP_pinfo", __VA_ARGS__); \
+    HPLMXP_comm_finalize();                                                    \
+    exit(1);                                                                   \
+  } while(0)
 
   // parse settings
   int  _P = 1, _Q = 1, n = 61440, nb = 2560;
@@ -136,7 +184,8 @@ void HPLMXP_pinfo(int             ARGC,
   std::string inputFileName = "HPL-MxP.dat";
 
   for(int i = 1; i < ARGC; i++) {
-    if(strcmp(ARGV[i], "-h") == 0 || strcmp(ARGV[i], "--help") == 0) {
+    const char* arg = ARGV[i];
+    if(strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
       if(rank == 0) {
         std::cout
             << "rocHPL-MxP client command line options:                      "
@@ -149,6 +198,10 @@ void HPLMXP_pinfo(int             ARGC,
                "size: the number of      \n"
                "                                   columns in MPI grid.  "
                "                     \n"
+               "-p  arg                            Node-local grid rows "
+               "(default: 1)            \n"
+               "-q  arg                            Node-local grid columns "
+               "(default: ranks/node)\n"
                "-N  [ --sizeN ]  arg (=61440)       Specific matrix size: "
                "the number of rows   \n"
                "                                   /columns in global "
@@ -156,6 +209,7 @@ void HPLMXP_pinfo(int             ARGC,
                "-NB [ --sizeNB ] arg (=2560)        Specific panel size: "
                "the number of rows    \n"
                "                                   /columns in panels.   "
+               "                     \n"
                "-it arg (=1)                        Number of times to "
                "run each problem    \n"
                "-i  [ --input ]  arg (=HPL-MxP.dat) Input file. When set, "
@@ -169,192 +223,62 @@ void HPLMXP_pinfo(int             ARGC,
                "--version                           Prints the version "
                "number                  \n";
       }
-      MPI_Barrier(MPI_COMM_WORLD);
-      MPI_Finalize();
+      HPLMXP_barrier(COMM);
+      HPLMXP_comm_finalize();
       exit(0);
     }
 
-    if(strcmp(ARGV[i], "--version") == 0) {
+    if(strcmp(arg, "--version") == 0) {
       if(rank == 0) {
         std::cout << "rocHPL-MxP version: " << __ROCHPLMXP_VER_MAJOR << "."
                   << __ROCHPLMXP_VER_MINOR << "." << __ROCHPLMXP_VER_PATCH
                   << std::endl;
       }
-      MPI_Barrier(MPI_COMM_WORLD);
-      MPI_Finalize();
+      HPLMXP_barrier(COMM);
+      HPLMXP_comm_finalize();
       exit(0);
     }
 
-    if(strcmp(ARGV[i], "-P") == 0 || strcmp(ARGV[i], "--ranksP") == 0) {
-      _P         = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-      if(_P < 1) {
-        if(rank == 0)
-          HPLMXP_pwarn(stderr,
-                       __LINE__,
-                       "HPLMXP_pinfo",
-                       "Illegal value for P. Exiting ...");
-        MPI_Finalize();
-        exit(1);
-      }
+    const bool isP  = !strcmp(arg, "-P") || !strcmp(arg, "--ranksP");
+    const bool isQ  = !strcmp(arg, "-Q") || !strcmp(arg, "--ranksQ");
+    const bool isp  = !strcmp(arg, "-p");
+    const bool isq  = !strcmp(arg, "-q");
+    const bool isN  = !strcmp(arg, "-N") || !strcmp(arg, "--sizeN");
+    const bool isNB = !strcmp(arg, "-NB") || !strcmp(arg, "--sizeNB");
+    const bool isIt = !strcmp(arg, "-it");
+    const bool isIn = !strcmp(arg, "-i") || !strcmp(arg, "--input");
+    if(!(isP || isQ || isp || isq || isN || isNB || isIt || isIn)) {
+      if(rank == 0)
+        HPLMXP_pwarn(stderr,
+                     __LINE__,
+                     "HPLMXP_pinfo",
+                     "Ignoring unknown argument '%s'",
+                     arg);
+      continue;
     }
-    if(strcmp(ARGV[i], "-Q") == 0 || strcmp(ARGV[i], "--ranksQ") == 0) {
-      _Q         = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-      if(_Q < 1) {
-        if(rank == 0)
-          HPLMXP_pwarn(stderr,
-                       __LINE__,
-                       "HPLMXP_pinfo",
-                       "Illegal value for Q. Exiting ...");
-        MPI_Finalize();
-        exit(1);
-      }
-    }
-    if(strcmp(ARGV[i], "-p") == 0) {
-      _p         = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-    }
-    if(strcmp(ARGV[i], "-q") == 0) {
-      _q         = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-    }
-
-    if(strcmp(ARGV[i], "-N") == 0 || strcmp(ARGV[i], "--sizeN") == 0) {
-      n          = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-      if(n < 1) {
-        if(rank == 0)
-          HPLMXP_pwarn(stderr,
-                       __LINE__,
-                       "HPLMXP_pinfo",
-                       "Illegal value for N. Exiting ...");
-        MPI_Finalize();
-        exit(1);
-      }
-    }
-    if(strcmp(ARGV[i], "-NB") == 0 || strcmp(ARGV[i], "--sizeNB") == 0) {
-      nb         = atoi(ARGV[i + 1]);
-      cmdlinerun = true;
-      i++;
-      if(nb < 1) {
-        if(rank == 0)
-          HPLMXP_pwarn(stderr,
-                       __LINE__,
-                       "HPLMXP_pinfo",
-                       "Illegal value for NB. Exiting ...");
-        MPI_Finalize();
-        exit(1);
-      }
-    }
-    if(strcmp(ARGV[i], "-it") == 0) {
-      _it = atoi(ARGV[i + 1]);
-      i++;
-      if(_it < 1) {
-        if(rank == 0)
-          HPLMXP_pwarn(stderr,
-                       __LINE__,
-                       "HPLMXP_pinfo",
-                       "Invalid number of iterations. Exiting ...");
-        MPI_Finalize();
-        exit(1);
-      }
-    }
-    if(strcmp(ARGV[i], "-i") == 0 || strcmp(ARGV[i], "--input") == 0) {
-      inputFileName = ARGV[i + 1];
+    if(i + 1 >= ARGC) PINFO_FAIL("Option %s needs a value. Exiting ...", arg);
+    const char* val = ARGV[++i];
+    if(isIn) {
+      inputFileName = val;
       inputfile     = true;
-      i++;
+      continue;
     }
+
+    int v;
+    if(!HPLMXP_pinfo_int(val, &v) || v < 1)
+      PINFO_FAIL("Illegal value '%s' for %s, need a positive integer. "
+                 "Exiting ...",
+                 val,
+                 arg);
+    if(!isIt) cmdlinerun = true;
+    if(isP) _P = v;
+    if(isQ) _Q = v;
+    if(isp) _p = v;
+    if(isq) _q = v;
+    if(isN) n = v;
+    if(isNB) nb = v;
+    if(isIt) _it = v;
   }
-
-  /*
-   * Check for enough processes in machine configuration
-   */
-  maxp = _P * _Q;
-  if(maxp > size) {
-    if(rank == 0)
-      HPLMXP_pwarn(stderr,
-                   __LINE__,
-                   "HPLMXP_pinfo",
-                   "Need at least %d processes for these tests",
-                   maxp);
-    MPI_Finalize();
-    exit(1);
-  }
-
-  /*Node-local grid*/
-  MPI_Comm nodeComm;
-  MPI_Comm_split_type(
-      MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, rank, MPI_INFO_NULL, &nodeComm);
-
-  int localRank;
-  int localSize;
-  MPI_Comm_rank(nodeComm, &localRank);
-  MPI_Comm_size(nodeComm, &localSize);
-
-  if(_p < 1 && _q < 1) { // Neither p nor q specified
-    _q = localSize;      // Assume a 1xq node-local grid
-    _p = 1;
-  } else if(_p < 1) { // q specified
-    if(localSize % _q != 0) {
-      if(rank == 0)
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "Node-local MPI grid cannot be split into q=%d columns",
-                     _q);
-      MPI_Finalize();
-      exit(1);
-    }
-    _p = localSize / _q;
-  } else if(_q < 1) { // p specified
-    if(localSize % _p != 0) {
-      if(rank == 0)
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "Node-local MPI grid cannot be split into p=%d rows",
-                     _p);
-      MPI_Finalize();
-      exit(1);
-    }
-    _q = localSize / _p;
-  } else {
-    if(localSize != _p * _q) {
-      if(rank == 0)
-        HPLMXP_pwarn(
-            stderr, __LINE__, "HPLMXP_pinfo", "Invalid Node-local MPI grid");
-      MPI_Finalize();
-      exit(1);
-    }
-  }
-
-  /*Check grid can be distributed to nodes*/
-  if(_Q % _q != 0 || _P % _p != 0) {
-    if(rank == 0)
-      HPLMXP_pwarn(stderr,
-                   __LINE__,
-                   "HPLMXP_pinfo",
-                   "MPI grid is not uniformly distributed amoung nodes, "
-                   "(P,Q)=(%d,%d) and (p,q)=(%d,%d)",
-                   _P,
-                   _Q,
-                   _p,
-                   _q);
-    MPI_Finalize();
-    exit(1);
-  }
-  MPI_Comm_free(&nodeComm);
-  /*
-   * Node-local Process grids, mapping
-   */
-  *p = _p;
-  *q = _q;
 
   *ITS = _it;
 
@@ -384,53 +308,66 @@ void HPLMXP_pinfo(int             ARGC,
      */
     *NTPS = 1;
     TP[0] = HPLMXP_1RING;
-
-    /*
-     * Compute and broadcast machine epsilon
-     */
-    TEST->epsil = HPLMXP_plamch<fp64_t>(MPI_COMM_WORLD, HPLMXP_MACH_EPS);
-
-    if(rank == 0) {
-      if((TEST->outfp = fopen("HPL-MxP.out", "w")) == NULL) { error = 1; }
-    }
-    HPLMXP_all_reduce(&error, 1, HPLMXP_MAX, MPI_COMM_WORLD);
-    if(error) {
-      if(rank == 0)
-        HPLMXP_pwarn(
-            stderr, __LINE__, "HPLMXP_pinfo", "cannot open file HPL-MxP.out.");
-      MPI_Finalize();
-      exit(1);
-    }
   } else {
     /*
      * Process 0 reads the input data, broadcasts to other processes and
      * writes needed information to TEST->outfp.
      */
-    char* status;
+    const char* fname = inputFileName.c_str();
     if(rank == 0) {
       /*
        * Open file and skip data file header
        */
-      if((infp = fopen(inputFileName.c_str(), "r")) == NULL) {
+      if((infp = fopen(fname, "r")) == NULL) {
         HPLMXP_pwarn(stderr,
                      __LINE__,
                      "HPLMXP_pinfo",
-                     "cannot open file %s",
-                     inputFileName.c_str());
+                     "cannot open file %s: %s",
+                     fname,
+                     strerror(errno));
         error = 1;
         goto label_error;
       }
 
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      status = fgets(auth, HPLMXP_LINE_MAX - 2, infp);
+#define PINFO_LINE(what)                                  \
+  if(fgets(line, HPLMXP_LINE_MAX - 2, infp) == NULL) {    \
+    HPLMXP_pwarn(stderr,                                  \
+                 __LINE__,                                \
+                 "HPLMXP_pinfo",                          \
+                 "%s: file ends at line %d, expected %s", \
+                 fname,                                   \
+                 lineno + 1,                              \
+                 what);                                   \
+    error = 1;                                            \
+    goto label_error;                                     \
+  }                                                       \
+  lineno++
+#define PINFO_BAD(what)            \
+  do {                             \
+    HPLMXP_pwarn(stderr,           \
+                 __LINE__,         \
+                 "HPLMXP_pinfo",   \
+                 "%s line %d: %s", \
+                 fname,            \
+                 lineno,           \
+                 what);            \
+    error = 1;                     \
+    goto label_error;              \
+  } while(0)
+
+      PINFO_LINE("the header");
+      if(fgets(auth, HPLMXP_LINE_MAX - 2, infp) == NULL)
+        PINFO_BAD("file too short");
+      lineno++;
       /*
        * Read name and unit number for summary output file
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", file);
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      fid = atoi(num);
+      PINFO_LINE("the output file name");
+      if(sscanf(line, "%255s", file) != 1)
+        PINFO_BAD("expected the output file name");
+      PINFO_LINE("the output device");
+      if(!HPLMXP_pinfo_ints(line, 1, &fid))
+        PINFO_BAD("expected the output device (6=stdout, 7=stderr, file)");
       if(fid == 6)
         TEST->outfp = stdout;
       else if(fid == 7)
@@ -446,149 +383,86 @@ void HPLMXP_pinfo(int             ARGC,
        *
        * Problem size (>=0) (N)
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      *NS = atoi(num);
-      if((*NS < 1) || (*NS > HPLMXP_MAX_PARAM)) {
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "%s %d",
-                     "Number of values of N is less than 1 or greater than",
-                     HPLMXP_MAX_PARAM);
-        error = 1;
-        goto label_error;
-      }
-
-      status  = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      lineptr = line;
-      for(i = 0; i < *NS; i++) {
-        (void)sscanf(lineptr, "%s", num);
-        lineptr += strlen(num) + 1;
-        if((N[i] = atoi(num)) < 0) {
-          HPLMXP_pwarn(
-              stderr, __LINE__, "HPLMXP_pinfo", "Value of N less than 0");
-          error = 1;
-          goto label_error;
-        }
-      }
+      PINFO_LINE("the number of problem sizes");
+      if(!HPLMXP_pinfo_ints(line, 1, NS) || (*NS < 1) ||
+         (*NS > HPLMXP_MAX_PARAM))
+        PINFO_BAD("number of values of N is not in 1..20");
+      PINFO_LINE("the problem sizes");
+      if(!HPLMXP_pinfo_ints(line, *NS, N)) PINFO_BAD("expected NS values of N");
+      for(i = 0; i < *NS; i++)
+        if(N[i] < 0) PINFO_BAD("value of N less than 0");
       /*
        * Block size (>=1) (NB)
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      *NBS = atoi(num);
-      if((*NBS < 1) || (*NBS > HPLMXP_MAX_PARAM)) {
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "%s %s %d",
-                     "Number of values of NB is less than 1 or",
-                     "greater than",
-                     HPLMXP_MAX_PARAM);
-        error = 1;
-        goto label_error;
-      }
-
-      status  = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      lineptr = line;
-      for(i = 0; i < *NBS; i++) {
-        (void)sscanf(lineptr, "%s", num);
-        lineptr += strlen(num) + 1;
-        if((NB[i] = atoi(num)) < 1) {
-          HPLMXP_pwarn(
-              stderr, __LINE__, "HPLMXP_pinfo", "Value of NB less than 1");
-          error = 1;
-          goto label_error;
-        }
-      }
+      PINFO_LINE("the number of block sizes");
+      if(!HPLMXP_pinfo_ints(line, 1, NBS) || (*NBS < 1) ||
+         (*NBS > HPLMXP_MAX_PARAM))
+        PINFO_BAD("number of values of NB is not in 1..20");
+      PINFO_LINE("the block sizes");
+      if(!HPLMXP_pinfo_ints(line, *NBS, NB))
+        PINFO_BAD("expected NBS values of NB");
+      for(i = 0; i < *NBS; i++)
+        if(NB[i] < 1) PINFO_BAD("value of NB less than 1");
       /*
        * Process grids, mapping, (>=1) (P, Q)
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      *PMAPPIN = (atoi(num) == 1 ? HPLMXP_COLUMN_MAJOR : HPLMXP_ROW_MAJOR);
+      PINFO_LINE("the process mapping");
+      if(!HPLMXP_pinfo_ints(line, 1, &j))
+        PINFO_BAD("expected the process mapping (0=row-, 1=column-major)");
+      *PMAPPIN = (j == 1 ? HPLMXP_COLUMN_MAJOR : HPLMXP_ROW_MAJOR);
 
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      if((*P = atoi(num)) < 1) {
-        HPLMXP_pwarn(
-            stderr, __LINE__, "HPLMXP_pinfo", "Value of P less than 1");
-        error = 1;
-        goto label_error;
-      }
-
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      if((*Q = atoi(num)) < 1) {
-        HPLMXP_pwarn(
-            stderr, __LINE__, "HPLMXP_pinfo", "Value of Q less than 1");
-        error = 1;
-        goto label_error;
-      }
-
-      /*
-       * Check for enough processes in machine configuration
-       */
-      nprocs = (*P) * (*Q);
-      if(nprocs > size) {
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "Need at least %d processes for these tests",
-                     nprocs);
-        error = 1;
-        goto label_error;
-      }
+      PINFO_LINE("P");
+      if(!HPLMXP_pinfo_ints(line, 1, P) || *P < 1)
+        PINFO_BAD("value of P less than 1");
+      PINFO_LINE("Q");
+      if(!HPLMXP_pinfo_ints(line, 1, Q) || *Q < 1)
+        PINFO_BAD("value of Q less than 1");
       /*
        * Checking threshold value (TEST->thrsh)
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      TEST->thrsh = atof(num);
+      PINFO_LINE("the threshold");
+      {
+        char* end;
+        TEST->thrsh = strtod(line, &end);
+        if(end == line) PINFO_BAD("expected the residual threshold");
+      }
 
       /*
        * Broadcast topology (TP) (0=rg, 1=2rg, 2=rgM, 3=2rgM, 4=L)
        */
-      status = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      (void)sscanf(line, "%s", num);
-      *NTPS = atoi(num);
-      if((*NTPS < 1) || (*NTPS > HPLMXP_MAX_PARAM)) {
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "%s %s %d",
-                     "Number of values of BCAST",
-                     "is less than 1 or greater than",
-                     HPLMXP_MAX_PARAM);
-        error = 1;
-        goto label_error;
+      PINFO_LINE("the number of broadcast topologies");
+      if(!HPLMXP_pinfo_ints(line, 1, NTPS) || (*NTPS < 1) ||
+         (*NTPS > HPLMXP_MAX_PARAM))
+        PINFO_BAD("number of values of BCAST is not in 1..20");
+      PINFO_LINE("the broadcast topologies");
+      {
+        int tp[HPLMXP_MAX_PARAM];
+        if(!HPLMXP_pinfo_ints(line, *NTPS, tp))
+          PINFO_BAD("expected NTPS values of BCAST");
+        for(i = 0; i < *NTPS; i++) {
+          j = tp[i];
+          if(j == 0)
+            TP[i] = HPLMXP_1RING;
+          else if(j == 1)
+            TP[i] = HPLMXP_1RING_M;
+          else if(j == 2)
+            TP[i] = HPLMXP_2RING;
+          else if(j == 3)
+            TP[i] = HPLMXP_2RING_M;
+          else if(j == 4)
+            TP[i] = HPLMXP_BLONG;
+          else // if(j == 5)
+            TP[i] = HPLMXP_BLONG_M;
+        }
       }
-      status  = fgets(line, HPLMXP_LINE_MAX - 2, infp);
-      lineptr = line;
-      for(i = 0; i < *NTPS; i++) {
-        (void)sscanf(lineptr, "%s", num);
-        lineptr += strlen(num) + 1;
-        j = atoi(num);
-        if(j == 0)
-          TP[i] = HPLMXP_1RING;
-        else if(j == 1)
-          TP[i] = HPLMXP_1RING_M;
-        else if(j == 2)
-          TP[i] = HPLMXP_2RING;
-        else if(j == 3)
-          TP[i] = HPLMXP_2RING_M;
-        else if(j == 4)
-          TP[i] = HPLMXP_BLONG;
-        else // if(j == 5)
-          TP[i] = HPLMXP_BLONG_M;
-      }
+#undef PINFO_LINE
+#undef PINFO_BAD
 
       /*
        * Close input file
        */
     label_error:
-      (void)fclose(infp);
+      if(infp != NULL) (void)fclose(infp);
     } else {
       TEST->outfp = NULL;
     }
@@ -596,24 +470,12 @@ void HPLMXP_pinfo(int             ARGC,
     /*
      * Check for error on reading input file
      */
-    HPLMXP_all_reduce(&error, 1, HPLMXP_MAX, MPI_COMM_WORLD);
-    if(error) {
-      if(rank == 0)
-        HPLMXP_pwarn(stderr,
-                     __LINE__,
-                     "HPLMXP_pinfo",
-                     "Illegal input in file HPL-MxP.dat. Exiting ...");
-      MPI_Finalize();
-      exit(1);
-    }
-    /*
-     * Compute and broadcast machine epsilon
-     */
-    TEST->epsil = HPLMXP_plamch<fp64_t>(MPI_COMM_WORLD, HPLMXP_MACH_EPS);
+    HPLMXP_all_reduce_host(&error, 1, HPLMXP_MAX, COMM);
+    if(error) PINFO_FAIL("Illegal input in file %s. Exiting ...", fname);
     /*
      * Pack information arrays and broadcast
      */
-    HPLMXP_broadcast(&(TEST->thrsh), 1, 0, MPI_COMM_WORLD);
+    HPLMXP_broadcast_host(&(TEST->thrsh), 1, 0, COMM);
     /*
      * Broadcast array sizes
      */
@@ -624,7 +486,7 @@ void HPLMXP_pinfo(int             ARGC,
       iwork[2] = (*PMAPPIN == HPLMXP_ROW_MAJOR ? 0 : 1);
       iwork[3] = *NTPS;
     }
-    HPLMXP_broadcast(iwork, 4, 0, MPI_COMM_WORLD);
+    HPLMXP_broadcast_host(iwork, 4, 0, COMM);
     if(rank != 0) {
       *NS      = iwork[0];
       *NBS     = iwork[1];
@@ -668,7 +530,7 @@ void HPLMXP_pinfo(int             ARGC,
       }
       j++;
     }
-    HPLMXP_broadcast(iwork, lwork, 0, MPI_COMM_WORLD);
+    HPLMXP_broadcast_host(iwork, lwork, 0, COMM);
     if(rank != 0) {
       j = 0;
       for(i = 0; i < *NS; i++) {
@@ -702,6 +564,77 @@ void HPLMXP_pinfo(int             ARGC,
     }
     if(iwork) free(iwork);
   }
+
+  /*
+   * Check for enough processes in machine configuration
+   */
+  nprocs = (*P) * (*Q);
+  if(nprocs > size)
+    PINFO_FAIL("Need at least %d processes for a %d x %d grid, but there are "
+               "%d. Exiting ...",
+               nprocs,
+               *P,
+               *Q,
+               size);
+
+  /*Node-local grid: the same on every node*/
+  int localSize = HPLMXP_comm_local_size();
+  int localMin = localSize, localMax = localSize;
+  HPLMXP_all_reduce_host(&localMin, 1, HPLMXP_MIN, COMM);
+  HPLMXP_all_reduce_host(&localMax, 1, HPLMXP_MAX, COMM);
+  if(localMin != localMax)
+    PINFO_FAIL("Nodes run between %d and %d processes; every node needs the "
+               "same number. Exiting ...",
+               localMin,
+               localMax);
+
+  if(_p < 1 && _q < 1) { // Neither p nor q specified
+    _q = localSize;      // Assume a 1xq node-local grid
+    _p = 1;
+  } else if(_p < 1) { // q specified
+    if(localSize % _q != 0)
+      PINFO_FAIL("Node-local MPI grid cannot be split into q=%d columns", _q);
+    _p = localSize / _q;
+  } else if(_q < 1) { // p specified
+    if(localSize % _p != 0)
+      PINFO_FAIL("Node-local MPI grid cannot be split into p=%d rows", _p);
+    _q = localSize / _p;
+  } else {
+    if(localSize != _p * _q)
+      PINFO_FAIL("Invalid Node-local MPI grid: p*q=%d*%d but %d processes per "
+                 "node",
+                 _p,
+                 _q,
+                 localSize);
+  }
+
+  /*Check grid can be distributed to nodes*/
+  if(*Q % _q != 0 || *P % _p != 0)
+    PINFO_FAIL("MPI grid is not uniformly distributed amoung nodes, "
+               "(P,Q)=(%d,%d) and (p,q)=(%d,%d)",
+               *P,
+               *Q,
+               _p,
+               _q);
+  /*
+   * Node-local Process grids, mapping
+   */
+  *p = _p;
+  *q = _q;
+
+  /*
+   * Compute and broadcast machine epsilon
+   */
+  TEST->epsil = HPLMXP_plamch<fp64_t>(COMM, HPLMXP_MACH_EPS);
+
+  if(inputfile == false && cmdlinerun == true) {
+    if(rank == 0) {
+      if((TEST->outfp = fopen("HPL-MxP.out", "w")) == NULL) { error = 1; }
+    }
+    HPLMXP_all_reduce_host(&error, 1, HPLMXP_MAX, COMM);
+    if(error) PINFO_FAIL("cannot open file HPL-MxP.out.");
+  }
+#undef PINFO_FAIL
 
   /*
    * regurgitate input

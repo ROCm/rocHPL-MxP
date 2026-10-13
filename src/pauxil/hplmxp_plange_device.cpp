@@ -139,9 +139,11 @@ T HPLMXP_plange(const HPLMXP_T_grid& GRID,
                            1 * sizeof(T),
                            hipMemcpyDeviceToHost,
                            computeStream));
-  HIP_CHECK(hipDeviceSynchronize());
+  HPLMXP_comm_sync(
+      nullptr,
+      "the device wait in HPLMXP_plange (covers the previous ptrsvU p2p)");
 
-  HPLMXP_all_reduce(h_norm, 1, HPLMXP_MAX, GRID.all_comm);
+  HPLMXP_all_reduce_host(h_norm, 1, HPLMXP_MAX, GRID.all_comm);
 
   return h_norm[0];
 }

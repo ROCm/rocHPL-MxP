@@ -26,4 +26,4 @@
  * ---------------------------------------------------------------------
  */
 
-double HPLMXP_ptimer_walltime(void) { return (MPI_Wtime()); }
+double HPLMXP_ptimer_walltime(void) { return (HPLMXP_wtime()); }

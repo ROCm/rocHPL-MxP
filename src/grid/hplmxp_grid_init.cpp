@@ -16,7 +16,7 @@
 
 #include "hplmxp.hpp"
 
-int HPLMXP_grid_init(MPI_Comm             COMM,
+int HPLMXP_grid_init(HPLMXP_Comm          COMM,
                      const HPLMXP_T_ORDER ORDER,
                      const int            NPROW,
                      const int            NPCOL,
@@ -30,15 +30,15 @@ int HPLMXP_grid_init(MPI_Comm             COMM,
    * HPLMXP_grid_init creates a NPROW x NPCOL  process  grid using column- or
    * row-major ordering from an initial collection of processes identified
    * by an  MPI  communicator.  Successful  completion is indicated by the
-   * returned error code MPI_SUCCESS.  Other error codes depend on the MPI
+   * returned error code HPLMXP_SUCCESS.  Other error codes depend on the
    * implementation. The coordinates of processes that are not part of the
    * grid are set to values outside of [0..NPROW) x [0..NPCOL).
    *
    * Arguments
    * =========
    *
-   * COMM    (global/local input)          MPI_Comm
-   *         On entry,  COMM  is  the  MPI  communicator  identifying  the
+   * COMM    (global/local input)          HPLMXP_Comm
+   *         On entry,  COMM  is  the       communicator  identifying  the
    *         initial  collection  of  processes out of which  the  grid is
    *         formed.
    *
@@ -63,12 +63,12 @@ int HPLMXP_grid_init(MPI_Comm             COMM,
    * ---------------------------------------------------------------------
    */
 
-  int hdim, hplerr = MPI_SUCCESS, ierr, ip2, k, mask, mycol, myrow, nprocs,
+  int hdim, hplerr = HPLMXP_SUCCESS, ierr, ip2, k, mask, mycol, myrow, nprocs,
             rank, size;
   int local_myrow, local_mycol;
 
-  MPI_Comm_rank(COMM, &rank);
-  MPI_Comm_size(COMM, &size);
+  rank = HPLMXP_comm_rank(COMM);
+  size = HPLMXP_comm_size(COMM);
   /*
    * Abort if illegal process grid
    */
@@ -82,6 +82,18 @@ int HPLMXP_grid_init(MPI_Comm             COMM,
   int local_size = p * q;
   int local_rank = rank % local_size;
   int node       = rank / local_size; // node number
+
+  /* The node-local grid assumes consecutive ranks on each node */
+  if(HPLMXP_comm_local_rank() >= 0 && HPLMXP_comm_local_rank() != local_rank)
+    HPLMXP_pabort(__LINE__,
+                  "HPLMXP_grid_init",
+                  "Process %d is node-local rank %d, but the grid needs "
+                  "ranks placed in blocks of p*q=%d per node (node-local "
+                  "rank %d); launch with block task distribution",
+                  rank,
+                  HPLMXP_comm_local_rank(),
+                  local_size,
+                  local_rank);
 
   /*Local grid is always row-major*/
   local_mycol = local_rank % q;
@@ -176,15 +188,15 @@ int HPLMXP_grid_init(MPI_Comm             COMM,
    * All communicator, leave if I am not part of this grid. Creation of the
    * row- and column communicators.
    */
-  ierr = MPI_Comm_split(
-      COMM, (rank < nprocs ? 0 : MPI_UNDEFINED), rank, &(GRID.all_comm));
-  if(GRID.all_comm == MPI_COMM_NULL) return (ierr);
+  ierr =
+      HPLMXP_comm_split(COMM, (rank < nprocs ? 0 : -1), rank, &(GRID.all_comm));
+  if(GRID.all_comm == HPLMXP_COMM_NULL) return (ierr);
 
-  ierr = MPI_Comm_split(GRID.all_comm, myrow, mycol, &(GRID.row_comm));
-  if(ierr != MPI_SUCCESS) hplerr = ierr;
+  ierr = HPLMXP_comm_split(GRID.all_comm, myrow, mycol, &(GRID.row_comm));
+  if(ierr != HPLMXP_SUCCESS) hplerr = ierr;
 
-  ierr = MPI_Comm_split(GRID.all_comm, mycol, myrow, &(GRID.col_comm));
-  if(ierr != MPI_SUCCESS) hplerr = ierr;
+  ierr = HPLMXP_comm_split(GRID.all_comm, mycol, myrow, &(GRID.col_comm));
+  if(ierr != HPLMXP_SUCCESS) hplerr = ierr;
 
   return (hplerr);
 }

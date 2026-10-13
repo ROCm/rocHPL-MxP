@@ -49,13 +49,15 @@ void HPLMXP_pabort(int LINE, const char* SRNAME, const char* FORM, ...) {
 
   va_list argptr;
   int     rank;
-  char    cline[128];
+  char    cline[512];
 
   va_start(argptr, FORM);
-  (void)vsprintf(cline, FORM, argptr);
+  (void)vsnprintf(cline, sizeof(cline), FORM, argptr);
   va_end(argptr);
 
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  rank = (HPLMXP_comm_world() == HPLMXP_COMM_NULL
+              ? -1
+              : HPLMXP_comm_rank(HPLMXP_comm_world()));
   /*
    * Display an error message
    */
@@ -80,6 +82,5 @@ void HPLMXP_pabort(int LINE, const char* SRNAME, const char* FORM, ...) {
                    SRNAME,
                    cline);
 
-  MPI_Abort(MPI_COMM_WORLD, -1);
-  exit(-1);
+  HPLMXP_comm_abort(HPLMXP_COMM_NULL, -1);
 }

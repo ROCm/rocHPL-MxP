@@ -31,9 +31,11 @@ find_package(Git REQUIRED)
 # Find OpenMP package
 find_package(OpenMP REQUIRED)
 
-# MPI
-set(MPI_HOME ${HPLMXP_MPI_DIR})
-find_package(MPI REQUIRED)
+# Communication backend
+if(HPLMXP_COMM_BACKEND STREQUAL "MPI")
+  set(MPI_HOME ${HPLMXP_MPI_DIR})
+  find_package(MPI REQUIRED)
+endif()
 
 # Add some paths
 list(APPEND CMAKE_PREFIX_PATH ${ROCSOLVER_PATH} ${ROCBLAS_PATH} ${ROCM_PATH})

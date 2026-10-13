@@ -14,13 +14,15 @@
  * ---------------------------------------------------------------------
  */
 
-#include "hplmxp.hpp"
+#include "hplmxp_comm_mpi.hpp"
+#include <climits>
 
 template <typename T>
 int HPLMXP_bcast(T*           SBUF,
-                 int          SCOUNT,
+                 size_t       COUNT,
                  int          ROOT,
-                 MPI_Comm     COMM,
+                 HPLMXP_Comm  HCOMM,
+                 hipStream_t  STREAM,
                  HPLMXP_T_TOP top) {
   /*
    * Purpose
@@ -39,21 +41,26 @@ int HPLMXP_bcast(T*           SBUF,
    *         On entry, SBUF specifies the starting address of buffer to be
    *         broadcast.
    *
-   * SCOUNT  (local input)                 int
-   *         On entry,  SCOUNT  specifies  the number of  type T
-   *         entries in SBUF. SCOUNT must be at least zero.
+   * COUNT   (local input)                 size_t
+   *         On entry,  COUNT  specifies  the number of  type T
+   *         entries in SBUF.
    *
    * ROOT    (local input)                 int
    *         On entry, ROOT specifies the rank of the origin process in
    *         the communication space defined by COMM.
    *
-   * COMM    (local input)                 MPI_Comm
-   *         The MPI communicator identifying the communication space.
+   * HCOMM   (local input)                 HPLMXP_Comm
+   *         The communicator identifying the communication space.
+   *
+   * STREAM  (local input)                 hipStream_t
+   *         Consumer stream; unused here (MPI is host-blocking).
    *
    * ---------------------------------------------------------------------
    */
 
-  if(SCOUNT <= 0) return (HPLMXP_SUCCESS);
+  if(COUNT == 0) return (HPLMXP_SUCCESS);
+  const int SCOUNT = HPLMXP_mpi_count(COUNT, "HPLMXP_bcast");
+  MPI_Comm  COMM   = HPLMXP_mpi(HCOMM);
 
   int ierr;
 
@@ -84,6 +91,9 @@ int HPLMXP_bcast(T*           SBUF,
     case HPLMXP_BLONG:
       ierr = HPLMXP_bcast_blong(SBUF, SCOUNT, ROOT, COMM);
       break;
+    case HPLMXP_COLL:
+      ierr = MPI_Bcast(SBUF, SCOUNT, T2MPI<T>::type, ROOT, COMM);
+      break;
     default: ierr = HPLMXP_FAILURE;
   }
 
@@ -94,6 +104,21 @@ int HPLMXP_bcast(T*           SBUF,
   return ((ierr == MPI_SUCCESS ? HPLMXP_SUCCESS : HPLMXP_FAILURE));
 }
 
-template int HPLMXP_bcast(double*, int, int, MPI_Comm, HPLMXP_T_TOP top);
-template int HPLMXP_bcast(float*, int, int, MPI_Comm, HPLMXP_T_TOP top);
-template int HPLMXP_bcast(__half*, int, int, MPI_Comm, HPLMXP_T_TOP top);
+template int HPLMXP_bcast(double*,
+                          size_t,
+                          int,
+                          HPLMXP_Comm,
+                          hipStream_t,
+                          HPLMXP_T_TOP);
+template int HPLMXP_bcast(float*,
+                          size_t,
+                          int,
+                          HPLMXP_Comm,
+                          hipStream_t,
+                          HPLMXP_T_TOP);
+template int HPLMXP_bcast(__half*,
+                          size_t,
+                          int,
+                          HPLMXP_Comm,
+                          hipStream_t,
+                          HPLMXP_T_TOP);

@@ -9,7 +9,7 @@ static int deviceMalloc(HPLMXP_T_grid&  grid,
 
   /*Check allocation is valid*/
   int error = (err != hipSuccess);
-  HPLMXP_all_reduce(&error, 1, HPLMXP_MAX, grid.all_comm);
+  HPLMXP_all_reduce_host(&error, 1, HPLMXP_MAX, grid.all_comm);
   if(error != 0) {
     return HPLMXP_FAILURE;
   } else {
@@ -224,9 +224,11 @@ void HPLMXP_Warmup(HPLMXP_T_grid&         grid,
   HPLMXP_pdpanel_init(grid, LU, LU.n, b, 0, 0, 0, 0, LU.panels[1]);
 
   HPLMXP_lacpy(b, b, Ap, lda, LU.piv, ldpiv);
-  HIP_CHECK(hipDeviceSynchronize());
-  HPLMXP_bcast(LU.piv, ldpiv * b, 0, grid.col_comm, algo.btopo);
-  HPLMXP_bcast(LU.piv, ldpiv * b, 0, grid.row_comm, algo.btopo);
+  HPLMXP_comm_sync(nullptr, "the first device wait in HPLMXP_Warmup");
+  HPLMXP_bcast(
+      LU.piv, (size_t)ldpiv * b, 0, grid.col_comm, computeStream, algo.btopo);
+  HPLMXP_bcast(
+      LU.piv, (size_t)ldpiv * b, 0, grid.row_comm, computeStream, algo.btopo);
 
   HPLMXP_getrf(b, b, LU.piv, ldpiv);
   HPLMXP_lacpy(b, b, LU.piv, ldpiv, Ap, lda);
@@ -262,11 +264,31 @@ void HPLMXP_Warmup(HPLMXP_T_grid&         grid,
                 LU.panels[1].U,
                 LU.panels[1].ldu);
 
-  HIP_CHECK(hipDeviceSynchronize());
-  HPLMXP_bcast(LU.panels[0].L, LU.panels[0].ldl * b, 0, grid.row_comm, algo.btopo);
-  HPLMXP_bcast(LU.panels[1].L, LU.panels[1].ldl * b, 0, grid.row_comm, algo.btopo);
-  HPLMXP_bcast(LU.panels[0].U, LU.panels[0].ldu * b, 0, grid.col_comm, algo.btopo);
-  HPLMXP_bcast(LU.panels[1].U, LU.panels[1].ldu * b, 0, grid.col_comm, algo.btopo);
+  HPLMXP_comm_sync(nullptr, "the second device wait in HPLMXP_Warmup");
+  HPLMXP_bcast(LU.panels[0].L,
+               (size_t)LU.panels[0].ldl * b,
+               0,
+               grid.row_comm,
+               computeStream,
+               algo.btopo);
+  HPLMXP_bcast(LU.panels[1].L,
+               (size_t)LU.panels[1].ldl * b,
+               0,
+               grid.row_comm,
+               computeStream,
+               algo.btopo);
+  HPLMXP_bcast(LU.panels[0].U,
+               (size_t)LU.panels[0].ldu * b,
+               0,
+               grid.col_comm,
+               computeStream,
+               algo.btopo);
+  HPLMXP_bcast(LU.panels[1].U,
+               (size_t)LU.panels[1].ldu * b,
+               0,
+               grid.col_comm,
+               computeStream,
+               algo.btopo);
 
   const fp32_t one   = 1.0;
   const fp32_t alpha = -1.0;

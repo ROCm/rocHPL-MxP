@@ -56,13 +56,15 @@ void HPLMXP_pwarn(FILE*       STREAM,
 
   va_list argptr;
   int     rank;
-  char    cline[128];
+  char    cline[512];
 
   va_start(argptr, FORM);
-  (void)vsprintf(cline, FORM, argptr);
+  (void)vsnprintf(cline, sizeof(cline), FORM, argptr);
   va_end(argptr);
 
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  rank = (HPLMXP_comm_world() == HPLMXP_COMM_NULL
+              ? -1
+              : HPLMXP_comm_rank(HPLMXP_comm_world()));
   /*
    * Display an error message
    */

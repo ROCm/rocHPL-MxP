@@ -27,7 +27,7 @@ int HPLMXP_grid_info(const HPLMXP_T_grid& GRID,
    *
    * HPLMXP_grid_info returns  the grid shape and the coordinates in the grid
    * of the calling process.  Successful  completion  is  indicated by the
-   * returned error code  MPI_SUCCESS. Other error codes depend on the MPI
+   * returned error code  HPLMXP_SUCCESS. Other error codes depend on the MPI
    * implementation.
    *
    * Arguments
@@ -62,5 +62,5 @@ int HPLMXP_grid_info(const HPLMXP_T_grid& GRID,
   NPCOL = GRID.npcol;
   MYROW = GRID.myrow;
   MYCOL = GRID.mycol;
-  return (MPI_SUCCESS);
+  return (HPLMXP_SUCCESS);
 }

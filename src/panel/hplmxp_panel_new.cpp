@@ -24,7 +24,7 @@ static int deviceMalloc(HPLMXP_T_grid&  grid,
 
   /*Check allocation is valid*/
   int error = (err != hipSuccess);
-  HPLMXP_all_reduce(&error, 1, HPLMXP_MAX, grid.all_comm);
+  HPLMXP_all_reduce_host(&error, 1, HPLMXP_MAX, grid.all_comm);
   if(error != 0) {
     return HPLMXP_FAILURE;
   } else {

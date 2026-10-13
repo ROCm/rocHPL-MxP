@@ -75,7 +75,8 @@ typedef struct HPLMXP_S_test {
  * Function prototypes
  * ---------------------------------------------------------------------
  */
-void HPLMXP_pinfo(int             ARGC,
+void HPLMXP_pinfo(HPLMXP_Comm     COMM,
+                  int             ARGC,
                   char**          ARGV,
                   HPLMXP_T_test*  TEST,
                   int*            NS,

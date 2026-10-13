@@ -10,6 +10,9 @@
 
 #include "hplmxp.hpp"
 #include <random>
+#include <climits>
+#include <cstring>
+#include <unistd.h>
 
 rocblas_handle blas_hdl;
 hipStream_t    computeStream;
@@ -22,26 +25,26 @@ hipEvent_t piv;
 hipEvent_t DgemmStart, DgemmEnd, LgemmStart, LgemmEnd, UgemmStart, UgemmEnd,
     TgemmStart, TgemmEnd;
 
-static char host_name[MPI_MAX_PROCESSOR_NAME];
-
 /*
-  This function finds out how many MPI processes are running on the same node
+  This function finds out how many processes are running on the same node
   and assigns a local rank that can be used to map a process to a device.
-  This function needs to be called by all the MPI processes.
+  This function needs to be called by all the processes.
 */
 void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
-  char host_name[MPI_MAX_PROCESSOR_NAME];
+  char host_name[HOST_NAME_MAX + 1];
 
-  int i, n, namelen, rank, nprocs;
+  int i, n, rank, nprocs;
   int dev;
 
   int nprow, npcol, myrow, mycol;
   HPLMXP_grid_info(grid, nprow, npcol, myrow, mycol);
 
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+  rank   = HPLMXP_comm_rank(HPLMXP_comm_world());
+  nprocs = HPLMXP_comm_size(HPLMXP_comm_world());
 
-  MPI_Get_processor_name(host_name, &namelen);
+  if(gethostname(host_name, sizeof(host_name)) != 0)
+    strcpy(host_name, "unknown");
+  host_name[HOST_NAME_MAX] = '\0';
 
   int localRank = grid.local_mycol + grid.local_myrow * grid.local_npcol;
   int localSize = grid.local_npcol * grid.local_nprow;
@@ -56,11 +59,23 @@ void HPLMXP_InitGPU(const HPLMXP_T_grid& grid) {
                     "HPLMXP_InitGPU",
                     "Node %s found no GPUs. Is the ROCm kernel module loaded?",
                     host_name);
-    MPI_Finalize();
+    HPLMXP_comm_finalize();
     exit(1);
   }
 
   dev = localRank % deviceCount;
+
+  /* A backend that has already bound a GPU (RCCL) must agree with the grid */
+  if(HPLMXP_comm_device() >= 0 && HPLMXP_comm_device() != dev)
+    HPLMXP_pabort(__LINE__,
+                  "HPLMXP_InitGPU",
+                  "Process %d on %s: grid maps it to GPU %d but the "
+                  "communication backend bound GPU %d (node-local rank). "
+                  "Launch with block task distribution and p*q ranks per node.",
+                  rank,
+                  host_name,
+                  dev,
+                  HPLMXP_comm_device());
 
   /* Assign device to MPI process, initialize BLAS and probe device properties
    */

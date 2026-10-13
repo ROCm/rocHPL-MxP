@@ -22,7 +22,7 @@ int HPLMXP_grid_exit(HPLMXP_T_grid& GRID) {
    * =======
    *
    * HPLMXP_grid_exit marks  the process  grid object for  deallocation.  The
-   * returned  error  code  MPI_SUCCESS  indicates  successful completion.
+   * returned error code HPLMXP_SUCCESS indicates  successful completion.
    * Other error codes are (MPI) implementation dependent.
    *
    * Arguments
@@ -35,15 +35,12 @@ int HPLMXP_grid_exit(HPLMXP_T_grid& GRID) {
    * ---------------------------------------------------------------------
    */
 
-  int hplerr = MPI_SUCCESS, mpierr;
+  int hplerr = HPLMXP_SUCCESS;
 
-  if(GRID.all_comm != MPI_COMM_NULL) {
-    mpierr = MPI_Comm_free(&(GRID.row_comm));
-    if(mpierr != MPI_SUCCESS) hplerr = mpierr;
-    mpierr = MPI_Comm_free(&(GRID.col_comm));
-    if(mpierr != MPI_SUCCESS) hplerr = mpierr;
-    mpierr = MPI_Comm_free(&(GRID.all_comm));
-    if(mpierr != MPI_SUCCESS) hplerr = mpierr;
+  if(GRID.all_comm != HPLMXP_COMM_NULL) {
+    HPLMXP_comm_free(&(GRID.row_comm));
+    HPLMXP_comm_free(&(GRID.col_comm));
+    HPLMXP_comm_free(&(GRID.all_comm));
   }
 
   GRID.order = HPLMXP_COLUMN_MAJOR;

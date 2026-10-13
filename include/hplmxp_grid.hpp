@@ -21,6 +21,7 @@
  * ---------------------------------------------------------------------
  */
 #include "hplmxp_pmisc.hpp"
+#include "hplmxp_comm.hpp"
 
 /*
  * ---------------------------------------------------------------------
@@ -35,9 +36,9 @@ typedef enum {
 } HPLMXP_T_ORDER;
 
 typedef struct HPLMXP_S_grid {
-  MPI_Comm       all_comm;    /* grid communicator */
-  MPI_Comm       row_comm;    /* row communicator */
-  MPI_Comm       col_comm;    /* column communicator */
+  HPLMXP_Comm    all_comm;    /* grid communicator */
+  HPLMXP_Comm    row_comm;    /* row communicator */
+  HPLMXP_Comm    col_comm;    /* column communicator */
   HPLMXP_T_ORDER order;       /* ordering of the procs in the grid */
   int            iam;         /* my rank in the grid */
   int            myrow;       /* my row number in the grid */
@@ -64,7 +65,6 @@ typedef struct HPLMXP_S_grid {
  * #define macros definitions
  * ---------------------------------------------------------------------
  */
-#define HPLMXP_2_MPI_TYPE(typ) ((typ == HPLMXP_INT ? MPI_INT : MPI_DOUBLE))
 /*
  * The following macros perform common modulo operations;  All functions
  * except MPosMod assume arguments are < d (i.e., arguments are themsel-
@@ -92,7 +92,7 @@ typedef struct HPLMXP_S_grid {
  * grid function prototypes
  * ---------------------------------------------------------------------
  */
-int HPLMXP_grid_init(MPI_Comm,
+int HPLMXP_grid_init(HPLMXP_Comm,
                      const HPLMXP_T_ORDER,
                      const int,
                      const int,
