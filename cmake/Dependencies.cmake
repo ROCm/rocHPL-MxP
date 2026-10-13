@@ -69,6 +69,11 @@ endif()
 # Find HIP package
 find_package(HIP REQUIRED)
 
+if(HPLMXP_COMM_BACKEND STREQUAL "RCCL")
+  find_package(rccl REQUIRED)
+  message("-- RCCL version:         ${rccl_VERSION}")
+endif()
+
 # rocblas
 find_package(rocblas REQUIRED)
 
