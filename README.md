@@ -121,11 +121,11 @@ Please use [the issue tracker][] for bugs and feature requests.
 The [license file][] can be found in the main repository.
 
 [HPL-MxP]: https://hpl-mxp.org/
-[ROCm]: https://github.com/RadeonOpenCompute/ROCm
-[HIP]: https://github.com/ROCm-Developer-Tools/HIP
-[rocBLAS]: https://github.com/ROCmSoftwarePlatform/rocBLAS
-[rocSOLVER]: https://github.com/ROCmSoftwarePlatform/rocSOLVER
+[ROCm]: https://github.com/ROCm/ROCm
+[HIP]: https://github.com/ROCm/HIP
+[rocBLAS]: https://github.com/ROCm/rocm-libraries/tree/main/projects/rocblas
+[rocSOLVER]: https://github.com/ROCm/rocm-libraries/tree/main/projects/rocsolver
 [OpenMPI]: https://github.com/open-mpi/ompi
 [UCX]: https://github.com/openucx/ucx
-[the issue tracker]: https://github.com/ROCmSoftwarePlatform/rocHPL-MxP/issues
-[license file]: https://github.com/ROCmSoftwarePlatform/rocHPL-MxP
+[the issue tracker]: https://github.com/ROCm/rocHPL-MxP/issues
+[license file]: https://github.com/ROCm/rocHPL-MxP/blob/main/LICENSE
